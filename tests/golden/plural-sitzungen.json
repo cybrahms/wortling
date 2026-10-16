@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:28.338203+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Sitzung",
+        "surface": "Sitzungen",
+        "pos": "noun",
+        "sense_gloss": "meeting, session (plural)",
+        "sense_key": "meeting-session",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "work-education"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "dauern",
+        "surface": "dauern",
+        "pos": "verb",
+        "sense_gloss": "to last, to take (a certain amount of time)",
+        "sense_key": "last-duration",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "jeweils",
+        "surface": "jeweils",
+        "pos": "adverb",
+        "sense_gloss": "in each case, respectively, each time",
+        "sense_key": "in-each-case",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Stunde",
+        "surface": "Stunde",
+        "pos": "noun",
+        "sense_gloss": "hour (unit of time)",
+        "sense_key": "hour-time-unit",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      }
+    ]
+  }
+}

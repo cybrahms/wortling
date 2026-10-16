@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:59.212321+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Kurs",
+        "surface": "Der Kurs",
+        "pos": "noun",
+        "sense_gloss": "course, class",
+        "sense_key": "course",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "education"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "sich richten an",
+        "surface": "richtet sich an",
+        "pos": "verb",
+        "sense_gloss": "to be aimed at, to address (an audience)",
+        "sense_key": "aim_at_audience",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der/die Erwachsene",
+        "surface": "Erwachsene",
+        "pos": "noun",
+        "sense_gloss": "adult(s)",
+        "sense_key": "adult_person",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      }
+    ]
+  }
+}

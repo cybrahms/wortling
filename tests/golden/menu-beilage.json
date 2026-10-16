@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:29.635576+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Beilage",
+        "surface": "Beilage",
+        "pos": "noun",
+        "sense_gloss": "side dish (culinary accompaniment)",
+        "sense_key": "side-dish-culinary",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "food"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Reis",
+        "surface": "Reis",
+        "pos": "noun",
+        "sense_gloss": "rice (cereal grain)",
+        "sense_key": "rice-grain",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "food"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Kartoffel",
+        "surface": "Kartoffeln",
+        "pos": "noun",
+        "sense_gloss": "potato(es)",
+        "sense_key": "potato-vegetable",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "food"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "wählen",
+        "surface": "wählen",
+        "pos": "verb",
+        "sense_gloss": "to choose, to select (from options)",
+        "sense_key": "choose-select-options",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general"
+      }
+    ]
+  }
+}

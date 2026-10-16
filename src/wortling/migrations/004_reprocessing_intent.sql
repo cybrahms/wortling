@@ -1,0 +1,1 @@
+ALTER TABLE jobs ADD COLUMN reprocess INTEGER NOT NULL DEFAULT 0 CHECK(reprocess IN (0,1));

@@ -1,0 +1,64 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:12.364192+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Betreuung",
+        "surface": "Die Betreuung",
+        "pos": "noun",
+        "sense_gloss": "care, supervision, childcare",
+        "sense_key": "supervision-care",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "education"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "enden",
+        "surface": "endet",
+        "pos": "verb",
+        "sense_gloss": "to end, to finish",
+        "sense_key": "to-end",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Ferien",
+        "surface": "der Ferien",
+        "pos": "noun",
+        "sense_gloss": "holidays, vacation",
+        "sense_key": "holidays-vacation",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "lifestyle"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "während",
+        "surface": "während",
+        "pos": "adverb",
+        "sense_gloss": "during, throughout",
+        "sense_key": "during-time",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Uhr",
+        "surface": "Uhr",
+        "pos": "noun",
+        "sense_gloss": "o'clock (unit for telling time)",
+        "sense_key": "oclock-time-unit",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:04.386684+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Elternabend",
+        "surface": "Elternabend",
+        "pos": "noun",
+        "sense_gloss": "parents' evening (school meeting for parents)",
+        "sense_key": "parents-evening",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "education"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "stattfinden",
+        "surface": "findet … statt",
+        "pos": "verb",
+        "sense_gloss": "to take place, to be held",
+        "sense_key": "take-place",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      }
+    ]
+  }
+}

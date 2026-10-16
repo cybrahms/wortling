@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:31.081695+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Wohnung",
+        "surface": "Wohnungen",
+        "pos": "noun",
+        "sense_gloss": "apartment, flat",
+        "sense_key": "residential-unit",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "housing"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "bereits",
+        "surface": "bereits",
+        "pos": "adverb",
+        "sense_gloss": "already",
+        "sense_key": "already",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "vermieten",
+        "surface": "vermietet",
+        "pos": "verb",
+        "sense_gloss": "to rent out (a property)",
+        "sense_key": "rent-out-property",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "real estate"
+      }
+    ]
+  }
+}

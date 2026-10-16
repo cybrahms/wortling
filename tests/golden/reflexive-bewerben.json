@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v2",
+  "recorded_at": "2026-10-14T04:07:46.700015+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "sich bewerben um",
+        "surface": "bewirbt sich um",
+        "pos": "verb",
+        "sense_gloss": "to apply for (a position, apartment, etc.)",
+        "sense_key": "apply-for",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "housing"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Wohnung",
+        "surface": "Wohnung",
+        "pos": "noun",
+        "sense_gloss": "apartment, flat",
+        "sense_key": "apartment",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "housing"
+      }
+    ]
+  }
+}

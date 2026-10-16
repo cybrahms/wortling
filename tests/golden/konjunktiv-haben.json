@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:23.890012+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Quittung",
+        "surface": "Quittung",
+        "pos": "noun",
+        "sense_gloss": "receipt, proof of payment",
+        "sense_key": "receipt",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "shopping/finance"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "haben",
+        "surface": "hätte",
+        "pos": "verb",
+        "sense_gloss": "would like to have (Konjunktiv II, with gern)",
+        "sense_key": "would-like-to-have",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "everyday/politeness"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "gern",
+        "surface": "gern",
+        "pos": "adverb",
+        "sense_gloss": "gladly, with pleasure (in polite requests)",
+        "sense_key": "gladly-pleasure",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "everyday/politeness"
+      }
+    ]
+  }
+}

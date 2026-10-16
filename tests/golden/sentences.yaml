@@ -1,0 +1,120 @@
+- id: split-anrufen
+  text: Ich rufe morgen bei der Schule an.
+  expected: [anrufen]
+- id: unsplit-anrufen
+  text: Bitte morgen die Schule anrufen.
+  expected: [anrufen]
+- id: split-aufstehen
+  text: Mein Sohn steht jeden Tag um sieben auf.
+  expected: [aufstehen]
+- id: participle-aufstehen
+  text: Er ist heute früh aufgestanden.
+  expected: [aufstehen]
+- id: split-mitbringen
+  text: Bringen Sie bitte Ihren Ausweis mit.
+  expected: [mitbringen, Ausweis]
+- id: split-ausfallen
+  text: Der Unterricht fällt morgen aus.
+  expected: [ausfallen, Unterricht]
+- id: split-anmelden
+  text: Ich melde mein Kind für den Kurs an.
+  expected: [anmelden]
+- id: split-zurueckgeben
+  text: Geben Sie das Formular bis Freitag zurück.
+  expected: [zurückgeben, Formular]
+- id: reflexive-kuemmern
+  text: Ich kümmere mich um die Anmeldung.
+  expected: [kümmern um, Anmeldung]
+- id: reflexive-erinnern
+  text: Ich erinnere mich an den Termin.
+  expected: [erinnern an, Termin]
+- id: reflexive-bewerben
+  text: Sie bewirbt sich um eine Wohnung.
+  expected: [bewerben um, Wohnung]
+- id: reflexive-freuen
+  text: Wir freuen uns auf die Ferien.
+  expected: [freuen auf]
+- id: compound-nebenkosten
+  text: Die Nebenkostenabrechnung ist angekommen.
+  expected: [Nebenkostenabrechnung]
+- id: compound-elternabend
+  text: Der Elternabend findet am Donnerstag statt.
+  expected: [Elternabend, stattfinden]
+- id: compound-aufenthalt
+  text: Die Aufenthaltserlaubnis muss verlängert werden.
+  expected: [Aufenthaltserlaubnis, verlängern]
+- id: compound-betriebskosten
+  text: Die Betriebskosten erhöhen sich ab Januar.
+  expected: [Betriebskosten]
+- id: konjunktiv-koennen
+  text: Könnten Sie den Antrag bitte unterschreiben?
+  expected: [unterschreiben, Antrag]
+- id: konjunktiv-werden
+  text: Ich würde den Termin gern verschieben.
+  expected: [verschieben, Termin]
+- id: konjunktiv-haben
+  text: Ich hätte gern eine Quittung.
+  expected: [Quittung]
+- id: konjunktiv-sein
+  text: Es wäre besser, einen Termin zu vereinbaren.
+  expected: [vereinbaren]
+- id: plural-sitzungen
+  text: Die Sitzungen dauern jeweils eine Stunde.
+  expected: [Sitzung]
+- id: plural-antraege
+  text: Alle Anträge müssen vollständig ausgefüllt sein.
+  expected: [Antrag, ausfüllen]
+- id: plural-aerzte
+  text: Die Ärzte empfehlen eine Untersuchung.
+  expected: [Arzt, Untersuchung]
+- id: plural-wohnungen
+  text: Die Wohnungen sind bereits vermietet.
+  expected: [Wohnung, vermieten]
+- id: umlaut-aenderung
+  text: Bitte beachten Sie die Änderung der Öffnungszeiten.
+  expected: [Änderung, Öffnungszeiten]
+- id: umlaut-rueckmeldung
+  text: Wir bitten um Rückmeldung bis morgen.
+  expected: [Rückmeldung]
+- id: umlaut-gebuehr
+  text: Für die Ausstellung wird eine Gebühr erhoben.
+  expected: [Gebühr]
+- id: noun-essen
+  text: Das Essen in der Mensa ist heute kostenlos.
+  expected: [Essen, Mensa]
+- id: adjective-kostenlos
+  text: Der Eintritt ist für Kinder kostenlos.
+  expected: [kostenlos, Eintritt]
+- id: nominalized-neues
+  text: Ich habe etwas Neues erfahren.
+  expected: [erfahren]
+- id: nominalized-erwachsene
+  text: Der Kurs richtet sich an Erwachsene.
+  expected: [Erwachsene]
+- id: school-entschuldigung
+  text: Bitte reichen Sie eine schriftliche Entschuldigung ein.
+  expected: [einreichen, Entschuldigung]
+- id: school-betreuung
+  text: Die Betreuung endet während der Ferien um vierzehn Uhr.
+  expected: [Betreuung]
+- id: school-einverstaendnis
+  text: Für den Ausflug benötigen wir Ihr Einverständnis.
+  expected: [Einverständnis, Ausflug]
+- id: behoerde-unterlagen
+  text: Bitte legen Sie die erforderlichen Unterlagen vor.
+  expected: [vorlegen, Unterlage]
+- id: behoerde-widerspruch
+  text: Gegen diesen Bescheid können Sie Widerspruch einlegen.
+  expected: [Bescheid, Widerspruch]
+- id: behoerde-frist
+  text: Die Frist zur Einreichung beträgt zwei Wochen.
+  expected: [Frist, Einreichung]
+- id: transit-ersatzverkehr
+  text: Zwischen den Stationen besteht Ersatzverkehr mit Bussen.
+  expected: [Ersatzverkehr]
+- id: housing-maengel
+  text: Melden Sie Mängel unverzüglich der Hausverwaltung.
+  expected: [Mangel, Hausverwaltung]
+- id: menu-beilage
+  text: Als Beilage können Sie zwischen Reis und Kartoffeln wählen.
+  expected: [Beilage]

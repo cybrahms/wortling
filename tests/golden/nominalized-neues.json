@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:04.424737+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "etwas",
+        "surface": "etwas",
+        "pos": "adverb",
+        "sense_gloss": "something",
+        "sense_key": "something",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "das Neue",
+        "surface": "Neues",
+        "pos": "noun",
+        "sense_gloss": "something new (nominalized adjective)",
+        "sense_key": "something-new-nominalized",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "erfahren",
+        "surface": "erfahren",
+        "pos": "verb",
+        "sense_gloss": "to learn, to find out (info)",
+        "sense_key": "learn-find-out",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general"
+      }
+    ]
+  }
+}

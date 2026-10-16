@@ -1,0 +1,32 @@
+name: WortlingShortcutTests
+options:
+  bundleIdPrefix: land.wortling.tests
+  deploymentTarget:
+    iOS: '26.0'
+settings:
+  base:
+    GENERATE_INFOPLIST_FILE: YES
+    CODE_SIGNING_ALLOWED: NO
+    SWIFT_VERSION: '5.0'
+targets:
+  Harness:
+    type: application
+    platform: iOS
+    sources: [Harness]
+    settings:
+      base:
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads: YES
+  ShortcutUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Harness
+schemes:
+  Harness:
+    build:
+      targets:
+        Harness: all
+    test:
+      targets: [ShortcutUITests]

@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:34.281230+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Arzt",
+        "surface": "Ärzte",
+        "pos": "noun",
+        "sense_gloss": "doctors (medical practitioners)",
+        "sense_key": "doctor-medical",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "health"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "empfehlen",
+        "surface": "empfehlen",
+        "pos": "verb",
+        "sense_gloss": "to recommend",
+        "sense_key": "recommend",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Untersuchung",
+        "surface": "Untersuchung",
+        "pos": "noun",
+        "sense_gloss": "examination / investigation",
+        "sense_key": "examination-medical",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "health"
+      }
+    ]
+  }
+}

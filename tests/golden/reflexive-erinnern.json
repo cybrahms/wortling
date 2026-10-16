@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:51.682807+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "sich erinnern an",
+        "surface": "erinnere … an",
+        "pos": "verb",
+        "sense_gloss": "to remember (sth.)",
+        "sense_key": "remember_sth",
+        "is_phrase": true,
+        "cefr_estimate": "A2",
+        "domain": "everyday"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Termin",
+        "surface": "den Termin",
+        "pos": "noun",
+        "sense_gloss": "appointment; deadline; scheduled date",
+        "sense_key": "appointment_date",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "everyday"
+      }
+    ]
+  }
+}

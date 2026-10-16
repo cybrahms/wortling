@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:02.958463+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Betriebskosten",
+        "surface": "Die Betriebskosten",
+        "pos": "noun",
+        "sense_gloss": "operating costs, business expenses",
+        "sense_key": "operating-costs",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "business"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "sich erhöhen",
+        "surface": "erhöhen sich",
+        "pos": "verb",
+        "sense_gloss": "to increase, to rise",
+        "sense_key": "to-increase",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general"
+      }
+    ]
+  }
+}

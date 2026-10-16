@@ -1,0 +1,112 @@
+#include 'actions/calendar'
+#include 'actions/crypto'
+#include 'actions/images'
+#include 'actions/photos'
+#include 'actions/web'
+
+#include 'actions/text'
+
+#define name Capture German
+#define version 26
+#define color green
+#define glyph openBook
+#define inputs image, text, url, webpage
+#define from sharesheet
+
+#question wortlingKey "Paste your personal Wortling Shortcut key (use Copy Shortcut key on the Wortling page)." "YOUR_WORTLING_KEY"
+@token = text(wortlingKey)
+@shared = ShortcutInput
+if !@shared {
+    @shared = prompt("What German did you hear?")
+}
+@sampleText = text("Wortling")
+@textType = typeOf(@sampleText)
+@sampleURL = getURLs("https://example.invalid")
+@urlType = typeOf(@sampleURL)
+for item in @shared {
+    @input = @item
+    @timestamp = formatDate(CurrentDate, "Custom", "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ")
+    @random = randomNumber(0, 2147483647)
+    @kind = typeOf(@input)
+    @kindEncoded = base64Encode(@kind)
+    @attempt = "shortcut-v3:{@kindEncoded}:{@timestamp}-{@random}"
+    if @kind == @textType {
+        @filename = matchText('(?i)^(IMG|DSC|PXL)[_-][A-Z0-9_. -]+$', @input)
+        if @filename {
+            alert("iOS shared only a photo filename. Choose the photo to capture its image.", "Wortling")
+            @input = selectPhotos(false)
+            if !@input {
+                stop()
+            }
+            @kind = typeOf(@input)
+        }
+    }
+    @response: dictionary
+    @page = matchText("(?i)safari|web.?page", @kind)
+    @isImage = 1
+    if @kind == @textType {
+        @isImage = 0
+    }
+    if @kind == @urlType {
+        @isImage = 0
+    }
+    if @page {
+        @isImage = 0
+    }
+    if @isImage == 1 {
+        @image = getImages(@input)
+        if !@image {
+            alert("No image was received. Share the photo again or use Wortling's photo picker.", "Wortling")
+            stop()
+        }
+        @widthValue = getImageDetail(@image, "Width")
+        @width = number(@widthValue)
+        @heightValue = getImageDetail(@image, "Height")
+        @height = number(@heightValue)
+        if @width > 2000 {
+            @image = resizeImageByLongestEdge(@image, "2000")
+        } else {
+            if @height > 2000 {
+                @image = resizeImageByLongestEdge(@image, "2000")
+            }
+        }
+        @jpeg = convertToJPEG(@image, 0.8, false)
+        @encoded = base64Encode(@jpeg)
+        @encoded = replaceText('[\r\n]', "", @encoded, true, true)
+        @response = jsonRequest("https://wortling.example.invalid/v1/captures", "POST", {
+            "client_ts": "{@timestamp}", "image_b64": "{@encoded}", "image_mime": "image/jpeg"
+        }, {"Authorization": "Bearer {@token}", "Idempotency-Key": "{@attempt}"})
+    } else {
+        if @page {
+            @url = getWebPageDetail(@input, "Page URL")
+            @selection = getWebPageDetail(@input, "Page Selection")
+            if @selection {
+                @response = jsonRequest("https://wortling.example.invalid/v1/captures", "POST", {
+                    "client_ts": "{@timestamp}", "url": "{@url}", "text": "{@selection}"
+                }, {"Authorization": "Bearer {@token}", "Idempotency-Key": "{@attempt}"})
+            } else {
+                @response = jsonRequest("https://wortling.example.invalid/v1/captures", "POST", {
+                    "client_ts": "{@timestamp}", "url": "{@url}"
+                }, {"Authorization": "Bearer {@token}", "Idempotency-Key": "{@attempt}"})
+            }
+        } else {
+            if @kind == @urlType {
+                @response = jsonRequest("https://wortling.example.invalid/v1/captures", "POST", {
+                    "client_ts": "{@timestamp}", "url": "{@input}"
+                }, {"Authorization": "Bearer {@token}", "Idempotency-Key": "{@attempt}"})
+            } else {
+                @response = jsonRequest("https://wortling.example.invalid/v1/captures", "POST", {
+                    "client_ts": "{@timestamp}", "text": "{@input}"
+                }, {"Authorization": "Bearer {@token}", "Idempotency-Key": "{@attempt}"})
+            }
+        }
+    }
+    @id = @response['id']
+    if @id {
+        showNotification("Captured", "Wortling", false)
+    } else {
+        @detail = @response['detail']
+        alert("Capture failed: {@detail}", "Wortling")
+        stop()
+    }
+}

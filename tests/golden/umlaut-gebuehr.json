@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:46.933914+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Ausstellung",
+        "surface": "Ausstellung",
+        "pos": "noun",
+        "sense_gloss": "exhibition, exposition",
+        "sense_key": "exhibition_public_display",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "culture"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Gebühr",
+        "surface": "Gebühr",
+        "pos": "noun",
+        "sense_gloss": "fee, charge",
+        "sense_key": "fee_payment_for_service",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "finance"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "erheben",
+        "surface": "erhoben",
+        "pos": "verb",
+        "sense_gloss": "to charge, to levy",
+        "sense_key": "levy_charge_fee",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "finance"
+      }
+    ]
+  }
+}

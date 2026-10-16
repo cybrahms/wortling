@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wortling</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#242a26;background:#f3f4ee}body{max-width:760px;margin:auto;padding:28px 20px}h1{font-size:38px;margin-bottom:0}p{line-height:1.5}input,textarea,button{font:inherit;border:1px solid #abb3a9;border-radius:7px;padding:11px;box-sizing:border-box}input,textarea{width:100%;background:white;margin:5px 0 14px}textarea{min-height:110px}button{background:#244b39;color:white;cursor:pointer;margin:0 8px 12px 0}label{display:block;font-weight:600}article{background:#fff;padding:18px;border-radius:10px;margin:14px 0}small{color:#546457}pre{white-space:pre-wrap;overflow-wrap:anywhere}.error{color:#9c2929}#status{min-height:1.5em}details{margin:12px 0}summary{cursor:pointer}nav{margin-top:22px}a{color:#244b39}.capture-preview{white-space:pre-wrap;overflow-wrap:anywhere}.capture-image{display:block;max-width:100%;max-height:280px;margin:12px auto;object-fit:contain}#latest-capture article{border-left:4px solid #244b39}#latest-capture h2{margin-bottom:0}
+</style>
+<h1>Wortling<span aria-hidden="true"> ·</span></h1><p>German you meet in the world, saved for learning.</p>
+<p id="signin" hidden>Open your personal setup link to sign in. Ask your service operator for a new link if needed.</p>
+<nav><button id="connect">Open my report</button><button id="forget">Sign out</button></nav>
+<section id="latest-capture" aria-label="Latest capture" hidden></section>
+<section aria-label="Capture German"><label for="text">What did you see or hear?</label><textarea id="text" placeholder="Die Sitzung findet morgen statt."></textarea>
+<label for="url">Source URL (optional)</label><input id="url" type="url" placeholder="https://…">
+<label for="image">Photo or screenshot (optional)</label><input id="image" type="file" accept="image/*">
+<button id="capture">Capture</button><div id="status" role="status" aria-live="polite"></div></section>
+<details id="iphone-setup"><summary>Set up iPhone sharing</summary>
+<p>1. Copy your personal Shortcut key. 2. Install Capture German and paste the key when asked.</p>
+<button id="shortcut-key">Copy Shortcut key</button> <a href="/v1/shortcut">Install Capture German v3</a>
+<p id="shortcut-status" role="status"></p><input id="shortcut-key-fallback" aria-label="Shortcut key" readonly hidden autocomplete="off">
+<p>Then share selected text, a page, or a photo → Capture German. Keep Tailscale on. Running the Shortcut directly asks for typed text.</p>
+</details>
+<div id="report"></div>
+<script>
+const byId=id=>document.getElementById(id);sessionStorage.removeItem('wortling-token');
+function message(text,error=false){byId('status').textContent=text;byId('status').className=error?'error':''}
+async function api(path,options={}){const response=await fetch(path,{...options,credentials:'same-origin',headers:{'Content-Type':'application/json','X-Wortling-Request':'1',...(options.headers||{})}});const data=await response.json();if(!response.ok){if(response.status===401)byId('signin').hidden=false;throw Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail))}byId('signin').hidden=true;return data}
+function element(tag,text,parent){const node=document.createElement(tag);node.textContent=text;parent.append(node);return node}
+function decode(text){const node=document.createElement('textarea');node.innerHTML=text;return node.value}
+let reportTimer;
+function captureState(capture,enabled){
+ if(capture.processing_status==='failed')return 'processing failed';
+ if(capture.processing_status==='running')return 'processing';
+ if(capture.processing_status==='pending')return !enabled?'saved; processing paused':capture.status==='error'?'waiting to retry':'queued for processing';
+ return ({processed:'processed',skipped_not_german:'saved; skipped as non-German',error:'processing error'})[capture.status]||capture.status;
+}
+function capturePreview(capture,parent,enabled,{image=false,compact=false}={}){
+ const box=element('article','',parent);
+ if(['pending','running','failed'].includes(capture.processing_status))box.dataset.pendingCapture=capture.id;
+ const kind=capture.image_mime?'Photo':capture.url?'Page':'Text';
+ element('strong',kind+' captured — '+captureState(capture,enabled),box);
+ element('small',' · '+new Date(capture.received_at).toLocaleString(),box);
+ if(image&&capture.image_mime){
+  const photo=element('img','',box);photo.className='capture-image';photo.alt='Your latest captured photo';
+  photo.src='/v1/captures/'+encodeURIComponent(capture.id)+'/image';
+ }
+ const content=capture.text||capture.url||(capture.image_mime?'Your photo is safely saved.':'');
+ const text=element('p',compact&&content.length>500?content.slice(0,500)+'…':content,box);text.className='capture-preview';
+ if(compact&&content.length>500){const more=element('details','',box);more.id='full-capture-'+capture.id;element('summary','Read full capture',more);element('p',content,more).className='capture-preview'}
+ if(capture.error)element('p',capture.error,box);
+ if(enabled&&['pending','running'].includes(capture.processing_status))element('p','This updates automatically when processing finishes.',box);
+ return box;
+}
+async function report(){
+ clearTimeout(reportTimer);
+ const data=await api('/v1/report');
+ const expanded=[...document.querySelectorAll('#report details[open],#latest-capture details[open]')].map(node=>node.id).filter(Boolean);
+ const latest=byId('latest-capture');latest.replaceChildren();latest.hidden=!data.captures.length;
+ if(data.captures.length){
+  element('h2','Latest capture',latest);
+  const box=capturePreview(data.captures[0],latest,data.processing_enabled,{image:true,compact:true});
+  box.dataset.latestCapture=data.captures[0].id;
+ }
+ const root=byId('report');root.replaceChildren();
+ element('h2',data.learner+' · report',root);
+ element('p',(data.processing_enabled?'Processing enabled. ':'Processing paused. ')+(data.writes_enabled?'Anki writes enabled.':'Dry run: Anki writes disabled.'),root);
+ if(!data.known_index.entries)element('p','Existing Anki decks are not indexed yet. Duplicate filtering against those decks is unverified.',root);
+ element('small','Model cost this month: $'+data.usage_month.cost_usd.toFixed(4),root);
+ for(const alert of data.alerts){
+  const box=element('article','',root);
+  element('strong',alert.kind==='capture_failed'?'A capture needs attention':alert.kind,box);
+  element('small',new Date(alert.created_at).toLocaleString(),box);
+  if(alert.capture_id){const link=element('a','Capture '+alert.capture_id,box);link.href='#capture-'+encodeURIComponent(alert.capture_id);link.onclick=()=>{byId('capture-history').open=true};element('p',alert.capture_text||alert.capture_url||'Image capture',box)}
+  element('p',alert.message,box);
+ }
+ element('h2','Queued and mined cards',root);
+ const waiting=data.captures.filter(c=>['pending','running','failed'].includes(c.processing_status));
+ const otherWaiting=waiting.filter(c=>c.id!==data.captures[0]?.id);
+ if(otherWaiting.length){
+  const group=element('details','',root);group.id='other-captures';
+  element('summary',otherWaiting.length+' more saved captures · processing status',group);
+  for(const capture of otherWaiting)capturePreview(capture,group,data.processing_enabled,{compact:true});
+ }
+ if(!data.cards.length&&!waiting.length)element('p','No cards yet. Capture some German to get started.',root);
+ for(const card of data.cards){
+  const box=element('article','',root);element('small',card.status+' · '+card.fields.CEFR,box);
+  element('h3',decode(card.fields.Lemma),box);element('p',decode(card.fields.Text),box);
+  if(card.fields.Forms)element('p',decode(card.fields.Forms),box);
+  element('p',decode(card.fields.SentenceEN),box);element('small',decode(card.fields.Source||''),box);
+ }
+ const history=element('details','',root);history.id='capture-history';
+ element('summary','Recent captures ('+data.captures.length+')',history);
+ for(const capture of data.captures){
+  const box=element('article','',history);box.id='capture-'+capture.id;
+  element('small',captureState(capture,data.processing_enabled)+' · '+new Date(capture.received_at).toLocaleString(),box);
+  element('p',capture.text||capture.url||'Image capture',box).className='capture-preview';
+  if(capture.error)element('p',capture.error,box);
+ }
+ const details=element('details','',root);details.id='capture-decisions';element('summary','Why items were kept or dropped',details);
+ for(const decision of data.decisions)element('p',(decision.lemma||'Capture')+' · '+decision.stage+' · '+decision.outcome+': '+decision.reason,details);
+ for(const id of expanded){const node=byId(id);if(node)node.open=true}
+ if(data.processing_enabled&&waiting.some(c=>['pending','running'].includes(c.processing_status)))reportTimer=setTimeout(()=>report().catch(()=>message('Could not refresh processing status. Tap Open my report.',true)),5000);
+}
+byId('shortcut-key').onclick=async()=>{
+ const key=api('/v1/shortcut/key',{method:'POST'}).then(data=>data.token);
+ try{
+  if(!navigator.clipboard?.write||!window.ClipboardItem)throw Error('Manual copy needed');
+  await navigator.clipboard.write([new ClipboardItem({'text/plain':key.then(token=>new Blob([token],{type:'text/plain'}))})]);
+  byId('shortcut-status').textContent='Copied. Install Capture German, then paste when asked.';
+ }catch{
+  try{byId('shortcut-key-fallback').value=await key;byId('shortcut-key-fallback').hidden=false;byId('shortcut-key-fallback').select();byId('shortcut-status').textContent='Copy the selected key below, then paste it during Shortcut setup.'}
+  catch(error){byId('shortcut-status').textContent=error.message}
+ }
+};
+byId('connect').onclick=()=>report().catch(e=>message(e.message,true));byId('forget').onclick=async()=>{clearTimeout(reportTimer);try{await api('/v1/session',{method:'DELETE'});byId('report').replaceChildren();byId('latest-capture').replaceChildren();byId('latest-capture').hidden=true;byId('shortcut-key-fallback').value='';byId('shortcut-key-fallback').hidden=true;byId('shortcut-status').textContent='';byId('signin').hidden=false;pending=null;message('Signed out.')}catch(e){message(e.message,true)}};
+report().catch(e=>message(e.message,true));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)report().catch(()=>{})});
+async function imagePayload(file){
+ const url=URL.createObjectURL(file);
+ try{
+  const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('This browser could not open the photo. Try a screenshot or a JPEG/PNG copy.'));img.src=url});
+  const scale=Math.min(1,2000/Math.max(image.naturalWidth,image.naturalHeight));
+  const canvas=document.createElement('canvas');canvas.width=Math.round(image.naturalWidth*scale);canvas.height=Math.round(image.naturalHeight*scale);
+  const context=canvas.getContext('2d');if(!context)throw Error('Photo conversion is unavailable in this browser.');
+  context.drawImage(image,0,0,canvas.width,canvas.height);
+  const encoded=canvas.toDataURL('image/jpeg',.8);if(!encoded.startsWith('data:image/jpeg;base64,'))throw Error('Photo conversion failed. Try a smaller photo.');
+  return encoded.split(',')[1];
+ }finally{URL.revokeObjectURL(url)}
+}
+let pending=null;byId('capture').onclick=async()=>{const button=byId('capture');button.disabled=true;let phase='prepare';try{if(!pending){const body={client_ts:new Date().toISOString()};if(byId('text').value.trim())body.text=byId('text').value;if(byId('url').value.trim())body.url=byId('url').value.trim();const file=byId('image').files[0];if(file){body.image_b64=await imagePayload(file);body.image_mime='image/jpeg'}if(!body.text&&!body.url&&!body.image_b64)throw Error('Add text, a URL, or an image.');pending={body,key:crypto.randomUUID()}}phase='send';await api('/v1/captures',{method:'POST',headers:{'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});pending=null;byId('text').value='';byId('url').value='';byId('image').value='';message('Captured.');phase='report';await report()}catch(e){message(phase==='report'?'Captured, but the report could not refresh. Tap Open my report.':phase==='prepare'?'Could not prepare capture: '+(e.message||e.name):'Could not send capture: '+(e.message||e.name)+'. Check your connection and press Capture to retry.',true)}finally{button.disabled=false}};
+</script></html>

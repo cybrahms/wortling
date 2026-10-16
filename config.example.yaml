@@ -1,0 +1,22 @@
+data_dir: data
+users:
+  - id: learner
+    display_name: Learner One
+    capture_token_env: LEARNER_CAPTURE_TOKEN
+    ankiweb_user_env: LEARNER_ANKIWEB_USER
+    ankiweb_pass_env: LEARNER_ANKIWEB_PASS
+    profile:
+      cefr: A2-B1
+      notes: Set your own learning goals here.
+      priority_domains: []
+    known_decks: [] # Inspect your own collection before configuring field mappings.
+  - id: learner2
+    display_name: Learner Two
+    capture_token_env: LEARNER2_CAPTURE_TOKEN
+    ankiweb_user_env: LEARNER2_ANKIWEB_USER
+    ankiweb_pass_env: LEARNER2_ANKIWEB_PASS
+    target_deck: Wortling
+    promote_new_cards: false # Preserve existing ordering in an independent deck.
+    profile:
+      cefr: A2-B1
+      notes: Set your own learning goals here.

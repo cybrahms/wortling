@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:07.330652+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Ausflug",
+        "surface": "Ausflug",
+        "pos": "noun",
+        "sense_gloss": "excursion, outing",
+        "sense_key": "excursion",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "travel/leisure"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "benötigen",
+        "surface": "benötigen",
+        "pos": "verb",
+        "sense_gloss": "to need, to require",
+        "sense_key": "need-require",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general/formal"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "das Einverständnis",
+        "surface": "Einverständnis",
+        "pos": "noun",
+        "sense_gloss": "consent, agreement",
+        "sense_key": "consent",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "formal/legal"
+      }
+    ]
+  }
+}

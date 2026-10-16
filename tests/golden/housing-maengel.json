@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:22.965062+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "melden",
+        "surface": "Melden",
+        "pos": "verb",
+        "sense_gloss": "to report (a defect, issue)",
+        "sense_key": "report-issue",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "formal communication"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Mangel",
+        "surface": "Mängel",
+        "pos": "noun",
+        "sense_gloss": "defect, shortcoming (in a property or product)",
+        "sense_key": "defect-shortcoming",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "property maintenance"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "unverzüglich",
+        "surface": "unverzüglich",
+        "pos": "adverb",
+        "sense_gloss": "without undue delay, immediately (formal/legal)",
+        "sense_key": "without-delay",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "legal/formal"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Hausverwaltung",
+        "surface": "Hausverwaltung",
+        "pos": "noun",
+        "sense_gloss": "property management company, building administration",
+        "sense_key": "property-management",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "housing"
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+    admin off
+    auto_https off
+}
+
+https://{$WORTLING_HOST}:8789 {
+    bind 127.0.0.1
+    tls {$WORTLING_TLS_CERT} {$WORTLING_TLS_KEY}
+    reverse_proxy 127.0.0.1:8787
+}

@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:52.093984+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Eintritt",
+        "surface": "Der Eintritt",
+        "pos": "noun",
+        "sense_gloss": "admission, entry (fee)",
+        "sense_key": "admission-fee",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "das Kind",
+        "surface": "Kinder",
+        "pos": "noun",
+        "sense_gloss": "children (plural)",
+        "sense_key": "child-children",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "kostenlos",
+        "surface": "kostenlos",
+        "pos": "adjective",
+        "sense_gloss": "free of charge, without cost",
+        "sense_key": "free-of-charge",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      }
+    ]
+  }
+}

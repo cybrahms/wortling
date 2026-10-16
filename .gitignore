@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+data/
+config.yaml
+*.egg-info/
+dist/
+
+.hyper-device.json
+
+# Deployment-specific signed template and signing metadata
+src/wortling/assets/*.shortcut

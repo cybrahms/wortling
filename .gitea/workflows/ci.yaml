@@ -1,0 +1,18 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and test from the lockfile
+        run: |
+          export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
+          uv sync --frozen
+          uv run playwright install --with-deps firefox
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pytest -q

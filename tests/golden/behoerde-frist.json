@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:19.983178+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Frist",
+        "surface": "Frist",
+        "pos": "noun",
+        "sense_gloss": "deadline, time limit",
+        "sense_key": "deadline_time_limit",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "legal/administrative"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Einreichung",
+        "surface": "Einreichung",
+        "pos": "noun",
+        "sense_gloss": "submission, filing",
+        "sense_key": "submission_filing",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "legal/administrative"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "betragen",
+        "surface": "beträgt",
+        "pos": "verb",
+        "sense_gloss": "to amount to, to be (a certain quantity)",
+        "sense_key": "amount_to_quantity",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Woche",
+        "surface": "Wochen",
+        "pos": "noun",
+        "sense_gloss": "week",
+        "sense_key": "time_unit_week",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "time"
+      }
+    ]
+  }
+}

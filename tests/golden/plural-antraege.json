@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:34.277626+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Antrag",
+        "surface": "Anträge",
+        "pos": "noun",
+        "sense_gloss": "application, request (official form)",
+        "sense_key": "official-application-request",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "vollständig",
+        "surface": "vollständig",
+        "pos": "adverb",
+        "sense_gloss": "completely, fully",
+        "sense_key": "completely-fully",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "ausfüllen",
+        "surface": "ausgefüllt",
+        "pos": "verb",
+        "sense_gloss": "to fill out (a form)",
+        "sense_key": "fill-out-form",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "administration"
+      }
+    ]
+  }
+}

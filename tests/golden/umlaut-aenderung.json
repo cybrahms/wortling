@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:41.168735+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "beachten",
+        "surface": "beachten",
+        "pos": "verb",
+        "sense_gloss": "to note, to pay attention to",
+        "sense_key": "note-pay-attention",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "business/official"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Änderung",
+        "surface": "Änderung",
+        "pos": "noun",
+        "sense_gloss": "change, modification",
+        "sense_key": "change-modification",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "business/official"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Öffnungszeiten",
+        "surface": "Öffnungszeiten",
+        "pos": "noun",
+        "sense_gloss": "opening hours",
+        "sense_key": "opening-hours",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "business/retail"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "bitte",
+        "surface": "Bitte",
+        "pos": "adverb",
+        "sense_gloss": "please (polite request)",
+        "sense_key": "please-polite",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      }
+    ]
+  }
+}

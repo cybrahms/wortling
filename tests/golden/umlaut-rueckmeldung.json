@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:45.555119+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "bitten um",
+        "surface": "bitten um",
+        "pos": "verb",
+        "sense_gloss": "to request, to ask for",
+        "sense_key": "request-um",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general/formal"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Rückmeldung",
+        "surface": "Rückmeldung",
+        "pos": "noun",
+        "sense_gloss": "feedback, reply",
+        "sense_key": "feedback",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "business/communication"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "morgen",
+        "surface": "morgen",
+        "pos": "adverb",
+        "sense_gloss": "tomorrow",
+        "sense_key": "tomorrow",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      }
+    ]
+  }
+}

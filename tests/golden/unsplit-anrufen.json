@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:35.152883+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "morgen",
+        "surface": "morgen",
+        "pos": "adverb",
+        "sense_gloss": "tomorrow (next day)",
+        "sense_key": "tomorrow",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Schule",
+        "surface": "die Schule",
+        "pos": "noun",
+        "sense_gloss": "school (educational institution)",
+        "sense_key": "school-institution",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "education"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "anrufen",
+        "surface": "anrufen",
+        "pos": "verb",
+        "sense_gloss": "to call (on the phone)",
+        "sense_key": "call-phone",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "communication"
+      }
+    ]
+  }
+}

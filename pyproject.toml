@@ -1,0 +1,42 @@
+[project]
+name = "wortling"
+version = "0.1.0"
+description = "German captured in the world, turned into considered Anki cards."
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.34",
+  "pydantic>=2.10",
+  "pyyaml>=6.0",
+  "pillow>=11",
+  "httpx>=0.28",
+  "filelock>=3.17",
+  "anki==26.9.3",
+  "wordfreq>=3.1.1",
+  "python-dotenv>=1.2.4",
+  "httpcore==1.0.9",
+]
+
+[project.scripts]
+wortling = "wortling.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "playwright>=1.64.0",
+    "pytest>=8",
+    "ruff>=0.11",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

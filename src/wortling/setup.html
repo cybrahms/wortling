@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Set up Wortling</title>
+<style>body{font:18px system-ui;max-width:520px;margin:60px auto;padding:20px;background:#f3f4ee;color:#242a26}button{font:inherit;padding:14px 22px;border:0;border-radius:8px;background:#244b39;color:white}p{line-height:1.5}</style>
+<h1>Set up Wortling</h1>
+<p>Tap Continue to sign this browser in to your personal Wortling account. You’ll stay signed in for up to 90 days.</p>
+<button id="continue">Continue</button><p id="status" role="status" aria-live="polite"></p>
+<script>
+const token=location.hash.slice(1);history.replaceState(null,'','/setup');
+const button=document.getElementById('continue'),status=document.getElementById('status');
+if(!token){button.hidden=true;status.textContent='Open the full setup link you were given. If it was already used, ask for a new one.'}
+button.onclick=async()=>{button.disabled=true;try{const response=await fetch('/v1/session',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Wortling-Request':'1'},body:JSON.stringify({token})});const data=await response.json();if(!response.ok)throw Error(data.detail||'Setup failed.');location.replace('/')}catch(error){status.textContent=error.message||'Could not connect. Check Tailscale and try again.';button.disabled=false}};
+</script></html>

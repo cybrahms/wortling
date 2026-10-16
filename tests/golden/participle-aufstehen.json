@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:33.829168+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "aufstehen",
+        "surface": "aufgestanden",
+        "pos": "verb",
+        "sense_gloss": "to get up (from bed)",
+        "sense_key": "get-up-from-bed",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "daily life"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "früh",
+        "surface": "früh",
+        "pos": "adjective",
+        "sense_gloss": "early",
+        "sense_key": "early-time",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "heute",
+        "surface": "heute",
+        "pos": "adverb",
+        "sense_gloss": "today",
+        "sense_key": "today",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      }
+    ]
+  }
+}

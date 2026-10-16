@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:58.862602+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "einreichen",
+        "surface": "reichen … ein",
+        "pos": "verb",
+        "sense_gloss": "to submit / to file (a document)",
+        "sense_key": "submit-file-document",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "school-work-administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "schriftlich",
+        "surface": "schriftliche",
+        "pos": "adjective",
+        "sense_gloss": "written (as opposed to oral)",
+        "sense_key": "written-form",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "school-work-administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Entschuldigung",
+        "surface": "Entschuldigung",
+        "pos": "noun",
+        "sense_gloss": "(written) excuse / justification note",
+        "sense_key": "written-excuse-note",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "school-work-administration"
+      }
+    ]
+  }
+}

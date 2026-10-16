@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:23.257833+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Station",
+        "surface": "Stationen",
+        "pos": "noun",
+        "sense_gloss": "station, stop (public transport)",
+        "sense_key": "station-transport-stop",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "transport"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "bestehen",
+        "surface": "besteht",
+        "pos": "verb",
+        "sense_gloss": "to exist, to be in effect (a service operates)",
+        "sense_key": "exist-operate-service",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Ersatzverkehr",
+        "surface": "Ersatzverkehr",
+        "pos": "noun",
+        "sense_gloss": "replacement/transit service (bus substitute for trains)",
+        "sense_key": "replacement-transit-service",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "transport"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Bus",
+        "surface": "Bussen",
+        "pos": "noun",
+        "sense_gloss": "bus (public transport vehicle)",
+        "sense_key": "bus-public-transport",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "transport"
+      }
+    ]
+  }
+}

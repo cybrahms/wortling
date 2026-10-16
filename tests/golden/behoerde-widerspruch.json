@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:21.034754+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Bescheid",
+        "surface": "Bescheid",
+        "pos": "noun",
+        "sense_gloss": "official notice/decision (administrative law)",
+        "sense_key": "official_administrative_notice",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "law/administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Widerspruch",
+        "surface": "Widerspruch",
+        "pos": "noun",
+        "sense_gloss": "objection/formal appeal against an administrative decision",
+        "sense_key": "legal_objection_appeal",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "law/administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "einlegen",
+        "surface": "einlegen",
+        "pos": "verb",
+        "sense_gloss": "to file/submit (an objection, appeal)",
+        "sense_key": "file_legal_objection",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "law/administration"
+      }
+    ]
+  }
+}

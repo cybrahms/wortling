@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v2",
+  "recorded_at": "2026-10-14T04:07:44.128748+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "sich kümmern um",
+        "surface": "kümmere mich um",
+        "pos": "verb",
+        "sense_gloss": "to take care of / to look after",
+        "sense_key": "take-care-of",
+        "is_phrase": true,
+        "cefr_estimate": "A2",
+        "domain": "everyday"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Anmeldung",
+        "surface": "Anmeldung",
+        "pos": "noun",
+        "sense_gloss": "registration",
+        "sense_key": "registration",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "administrative"
+      }
+    ]
+  }
+}

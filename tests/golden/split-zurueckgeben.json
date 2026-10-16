@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:46.814949+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "zurückgeben",
+        "surface": "Geben … zurück",
+        "pos": "verb",
+        "sense_gloss": "to give back, to return (a document, item)",
+        "sense_key": "give-back-document",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "office / formal communication"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "das Formular",
+        "surface": "das Formular",
+        "pos": "noun",
+        "sense_gloss": "form (document to be filled in)",
+        "sense_key": "form-document",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "office / administration"
+      }
+    ]
+  }
+}

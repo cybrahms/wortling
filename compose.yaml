@@ -1,0 +1,31 @@
+services:
+  api:
+    image: wortling:trial
+    build: .
+    command: [serve, --host, 0.0.0.0]
+    env_file:
+      - .env
+      - "${WORTLING_ANKI_ENV_FILE:-.env}"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - data:/data
+    ports: ["127.0.0.1:8787:8787"]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/v1/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  worker:
+    image: wortling:trial
+    command: [worker]
+    stop_grace_period: 30m
+    env_file:
+      - .env
+      - "${WORTLING_ANKI_ENV_FILE:-.env}"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - data:/data
+    restart: unless-stopped
+volumes:
+  data:

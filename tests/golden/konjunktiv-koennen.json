@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:17.478033+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "unterschreiben",
+        "surface": "unterschreiben",
+        "pos": "verb",
+        "sense_gloss": "to sign (a document)",
+        "sense_key": "sign-document",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "administrative"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Antrag",
+        "surface": "den Antrag",
+        "pos": "noun",
+        "sense_gloss": "application, formal request",
+        "sense_key": "formal-application",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "administrative"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "können",
+        "surface": "Könnten",
+        "pos": "verb",
+        "sense_gloss": "polite request auxiliary (Konjunktiv II)",
+        "sense_key": "polite-request-konn",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "general"
+      }
+    ]
+  }
+}

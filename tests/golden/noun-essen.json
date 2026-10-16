@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:46.463850+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "das Essen",
+        "surface": "Essen",
+        "pos": "noun",
+        "sense_gloss": "food, meal (as served)",
+        "sense_key": "food_meal",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "food / daily life"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Mensa",
+        "surface": "Mensa",
+        "pos": "noun",
+        "sense_gloss": "university canteen, cafeteria",
+        "sense_key": "university_canteen",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "education"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "heute",
+        "surface": "heute",
+        "pos": "adverb",
+        "sense_gloss": "today",
+        "sense_key": "today",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "time"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "kostenlos",
+        "surface": "kostenlos",
+        "pos": "adjective",
+        "sense_gloss": "free of charge",
+        "sense_key": "free_of_charge",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "everyday / commerce"
+      }
+    ]
+  }
+}

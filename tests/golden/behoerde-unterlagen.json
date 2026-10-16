@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:07:08.873631+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "vorlegen",
+        "surface": "legen … vor",
+        "pos": "verb",
+        "sense_gloss": "to submit/present (documents)",
+        "sense_key": "submit-documents",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Unterlage",
+        "surface": "Unterlagen",
+        "pos": "noun",
+        "sense_gloss": "documents, supporting papers",
+        "sense_key": "documents-papers",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "erforderlich",
+        "surface": "erforderlichen",
+        "pos": "adjective",
+        "sense_gloss": "required, necessary",
+        "sense_key": "required-necessary",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "formal"
+      }
+    ]
+  }
+}

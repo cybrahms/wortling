@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:34.461432+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Sohn",
+        "surface": "Sohn",
+        "pos": "noun",
+        "sense_gloss": "son (male child of a parent)",
+        "sense_key": "son-family-member",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "family"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "aufstehen",
+        "surface": "steht … auf",
+        "pos": "verb",
+        "sense_gloss": "to get up (from bed)",
+        "sense_key": "get-up-from-bed",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "daily routine"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "jeden Tag",
+        "surface": "jeden Tag",
+        "pos": "phrase",
+        "sense_gloss": "every day",
+        "sense_key": "every-day-frequency",
+        "is_phrase": true,
+        "cefr_estimate": "A1",
+        "domain": "time"
+      }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:45.405707+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "mitbringen",
+        "surface": "Bringen … mit",
+        "pos": "verb",
+        "sense_gloss": "to bring along",
+        "sense_key": "bring-along",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "everyday"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Ausweis",
+        "surface": "Ausweis",
+        "pos": "noun",
+        "sense_gloss": "identification document, ID card",
+        "sense_key": "id-document",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "bureaucracy"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "bitte",
+        "surface": "bitte",
+        "pos": "adverb",
+        "sense_gloss": "please (polite request marker)",
+        "sense_key": "please",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "everyday"
+      }
+    ]
+  }
+}

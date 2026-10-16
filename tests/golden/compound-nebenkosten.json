@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:04.292018+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Nebenkostenabrechnung",
+        "surface": "Nebenkostenabrechnung",
+        "pos": "noun",
+        "sense_gloss": "utility bill statement",
+        "sense_key": "utility-bill-statement",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "housing/administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "ankommen",
+        "surface": "angekommen",
+        "pos": "verb",
+        "sense_gloss": "to arrive",
+        "sense_key": "to-arrive",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "daily-life"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Nebenkosten",
+        "surface": "Nebenkosten",
+        "pos": "noun",
+        "sense_gloss": "ancillary costs / utility costs",
+        "sense_key": "ancillary-costs",
+        "is_phrase": false,
+        "cefr_estimate": "B2",
+        "domain": "housing/administration"
+      }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:44.031570+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "anmelden",
+        "surface": "melde … an",
+        "pos": "verb",
+        "sense_gloss": "to register / enroll (someone for something)",
+        "sense_key": "register_enroll",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "administration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "das Kind",
+        "surface": "Kind",
+        "pos": "noun",
+        "sense_gloss": "child",
+        "sense_key": "child",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "family"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "der Kurs",
+        "surface": "Kurs",
+        "pos": "noun",
+        "sense_gloss": "course (educational class)",
+        "sense_key": "course_learning",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "education"
+      }
+    ]
+  }
+}

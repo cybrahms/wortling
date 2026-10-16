@@ -1,0 +1,10 @@
+services:
+  syncserver:
+    image: wortling:trial
+    entrypoint: [/app/.venv/bin/python, -m, anki.syncserver]
+    environment:
+      SYNC_USER1: test:test
+      SYNC_HOST: 0.0.0.0
+      SYNC_PORT: 8080
+      SYNC_BASE: /tmp/wortling-sync-test
+    ports: ["127.0.0.1:18082:8080"]

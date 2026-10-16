@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:04.755715+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "die Aufenthaltserlaubnis",
+        "surface": "Aufenthaltserlaubnis",
+        "pos": "noun",
+        "sense_gloss": "residence permit",
+        "sense_key": "residence_permit_document",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "admin/immigration"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "verlängern",
+        "surface": "verlängert werden",
+        "pos": "verb",
+        "sense_gloss": "to extend, to renew (a document or permission)",
+        "sense_key": "extend_renew_document",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "admin"
+      }
+    ]
+  }
+}

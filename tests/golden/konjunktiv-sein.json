@@ -1,0 +1,53 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:18.785004+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Termin",
+        "surface": "Termin",
+        "pos": "noun",
+        "sense_gloss": "appointment; scheduled date",
+        "sense_key": "appointment",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "daily organization"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "vereinbaren",
+        "surface": "zu vereinbaren",
+        "pos": "verb",
+        "sense_gloss": "to arrange; to agree on (an appointment)",
+        "sense_key": "arrange_agree",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "daily organization"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "besser",
+        "surface": "besser",
+        "pos": "adjective",
+        "sense_gloss": "better (comparative of gut)",
+        "sense_key": "better",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "sein",
+        "surface": "wäre",
+        "pos": "verb",
+        "sense_gloss": "to be (Konjunktiv II expressing a hypothetical suggestion)",
+        "sense_key": "be_hypothetical",
+        "is_phrase": false,
+        "cefr_estimate": "A2",
+        "domain": "general"
+      }
+    ]
+  }
+}

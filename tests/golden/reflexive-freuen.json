@@ -1,0 +1,31 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:05:52.501119+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "sich freuen auf",
+        "surface": "freuen uns auf",
+        "pos": "verb",
+        "sense_gloss": "to look forward to",
+        "sense_key": "look-forward-to",
+        "is_phrase": true,
+        "cefr_estimate": "A2",
+        "domain": "daily life"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "die Ferien",
+        "surface": "Ferien",
+        "pos": "noun",
+        "sense_gloss": "holidays / vacation (plural)",
+        "sense_key": "holidays-vacation",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "travel"
+      }
+    ]
+  }
+}

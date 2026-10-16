@@ -1,0 +1,42 @@
+{
+  "model": "qwen3.8-flash",
+  "prompt_version": "v1",
+  "recorded_at": "2026-10-14T04:06:16.062582+00:00",
+  "response": {
+    "candidates": [
+      {
+        "sentence_id": 0,
+        "lemma": "der Termin",
+        "surface": "den Termin",
+        "pos": "noun",
+        "sense_gloss": "appointment, scheduled meeting",
+        "sense_key": "appointment_scheduled_meeting",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "work"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "verschieben",
+        "surface": "würde … verschieben",
+        "pos": "verb",
+        "sense_gloss": "to postpone, to reschedule",
+        "sense_key": "postpone_reschedule",
+        "is_phrase": false,
+        "cefr_estimate": "B1",
+        "domain": "work"
+      },
+      {
+        "sentence_id": 0,
+        "lemma": "gern",
+        "surface": "gern",
+        "pos": "adverb",
+        "sense_gloss": "gladly, like to",
+        "sense_key": "gladly_willingly",
+        "is_phrase": false,
+        "cefr_estimate": "A1",
+        "domain": "everyday"
+      }
+    ]
+  }
+}
