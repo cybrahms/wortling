@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 
 from wortling.config import load_settings
 from wortling.db import Database
@@ -28,7 +29,7 @@ def main() -> None:
         ],
     )
     parser.add_argument("argument", nargs="?")
-    parser.add_argument("--user", default="learner")
+    parser.add_argument("--user", help="Learner ID; defaults to the first configured learner")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--since", default="v1")
@@ -38,9 +39,11 @@ def main() -> None:
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8787, type=int)
-    parser.add_argument("--base-url", default="https://wortling.example.invalid")
+    parser.add_argument("--base-url", default=os.environ.get("WORTLING_BASE_URL"))
     args = parser.parse_args()
     settings = load_settings(args.config)
+    if args.user is None:
+        args.user = settings.users[0].id
     if args.command == "config-check":
         print(f"Valid configuration: {len(settings.users)} learners")
     elif args.command == "init":
@@ -49,6 +52,8 @@ def main() -> None:
     elif args.command == "setup-link":
         from wortling.browser_auth import issue_setup_link
 
+        if not args.base_url:
+            parser.error("setup-link requires --base-url or WORTLING_BASE_URL")
         settings.learner(args.user)
         db = Database(settings.data_dir)
         db.initialize(settings)

@@ -16,6 +16,11 @@ by the Continue button. Browser sessions use a Secure, HttpOnly, SameSite=Strict
 cookie. Rotate capture tokens and initialize/restart the service to revoke existing
 tokens and sessions. Recreate Compose containers when changing environment files.
 
+Set `WORTLING_BASE_URL` in the private environment to avoid repeating `--base-url`.
+Commands default to the first learner in your configuration; pass `--user` to
+select another learner. Neither the deployment origin nor learner IDs need to be
+hardcoded in the source.
+
 ## Model provider
 
 Configure `HYPER_API_KEY`, or supply a private OAuth environment file through
