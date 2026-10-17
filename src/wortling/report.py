@@ -1,12 +1,53 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from wortling.config import Learner
 from wortling.db import Database, now
+
+# How many words the simplified list carries. It is the first thing in the
+# report and the learner should reach the bottom of it without scrolling far.
+NEWEST_LIMIT = 20
+
+
+def newest_words(db: Database, user: Learner, limit: int = NEWEST_LIMIT) -> list[dict]:
+    """The learner's most recently collected words, newest first.
+
+    Ordered by the capture that first brought each word in — the earliest
+    encounter's ``received_at`` — so the list reads as the order words joined
+    the collection. Cards the pipeline dropped are left out; they keep their
+    place in the Cards section below.
+    """
+    with db.connect() as conn:
+        return _newest_words(conn, user.id, limit)
+
+
+def _newest_words(conn: sqlite3.Connection, user_id: str, limit: int) -> list[dict]:
+    words = []
+    for row in conn.execute(
+        "SELECT c.id,c.status,c.fields_json,MIN(cap.received_at) AS first_seen "
+        "FROM cards c JOIN encounters e ON e.card_id=c.id "
+        "JOIN captures cap ON cap.id=e.capture_id "
+        "WHERE c.user_id=? AND c.status<>'dropped' GROUP BY c.id "
+        "ORDER BY first_seen DESC,c.updated_at DESC LIMIT ?",
+        (user_id, limit),
+    ):
+        fields = json.loads(row["fields_json"])
+        words.append(
+            {
+                "card_id": row["id"],
+                "status": row["status"],
+                "lemma": fields.get("Lemma", ""),
+                "gloss": fields.get("Gloss", ""),
+                "text": fields.get("Text", ""),
+                "first_seen": row["first_seen"],
+            }
+        )
+    return words
 
 
 def learner_report(db: Database, user: Learner) -> dict:
@@ -55,6 +96,7 @@ def learner_report(db: Database, user: Learner) -> dict:
                 (user.id,),
             ).fetchone()
         )
+        newest = _newest_words(conn, user.id, NEWEST_LIMIT)
         month = now()[:7]
         usage = dict(
             conn.execute(
@@ -67,6 +109,7 @@ def learner_report(db: Database, user: Learner) -> dict:
         )
     return {
         "learner": user.display_name,
+        "newest": newest,
         "processing_enabled": user.processing_enabled,
         "writes_enabled": user.writes_enabled,
         "known_index": index,
@@ -97,7 +140,18 @@ def write_report(db: Database, user: Learner) -> Path:
             "Known decks are not indexed. Dedupe against existing Anki decks is unverified.",
             "",
         ]
-    lines += ["## Cards", ""]
+    lines += [
+        "## Newest words",
+        "",
+        "Newest first, by the capture that brought each word in.",
+        "",
+    ]
+    if report["newest"]:
+        for word in report["newest"]:
+            lines.append(f"- {word['lemma']} — {word['gloss']}")
+    else:
+        lines.append("- (none yet)")
+    lines += ["", "## Cards", ""]
     for card in report["cards"]:
         fields = card["fields"]
         lines += [
