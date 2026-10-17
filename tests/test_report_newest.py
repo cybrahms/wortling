@@ -75,7 +75,11 @@ def test_a_card_touched_again_does_not_jump_the_order(settings):
 
 
 def test_a_card_seen_much_later_keeps_its_original_place(settings):
-    """A word first captured in September stays below one first captured in October."""
+    """A word first captured in September stays below one first captured in October.
+
+    The recapture has to be dated after the other card's capture, or a MAX() over
+    the encounters would tie them and this test would pass against the wrong key.
+    """
     db, user = seed(
         settings,
         [
@@ -85,8 +89,19 @@ def test_a_card_seen_much_later_keeps_its_original_place(settings):
     )
     with db.connect() as conn:
         conn.execute(
+            "INSERT INTO captures(id,user_id,received_at,client_ts,payload_hash) "
+            "VALUES (?,?,?,?,?)",
+            (
+                "capture-recapture",
+                user.id,
+                "2026-11-05T09:00:00+00:00",
+                "2026-11-05T09:00:00+00:00",
+                "hash-recapture",
+            ),
+        )
+        conn.execute(
             "INSERT INTO encounters(card_id,capture_id,sentence) VALUES (?,?,?)",
-            ("card-0-der Herbst", "capture-1", "… der Herbst …"),
+            ("card-0-der Herbst", "capture-recapture", "… der Herbst …"),
         )
     assert [word["lemma"] for word in newest_words(db, user)] == ["die Sitzung", "der Herbst"]
 
