@@ -77,6 +77,7 @@ class Learner(StrictModel):
 
 class LLMSettings(StrictModel):
     base_url: str = "https://hyper.charm.land/v1"
+    api_key_env: str | None = None
     models: dict[str, str] = Field(
         default_factory=lambda: {
             "normalize": "qwen3.8-flash",

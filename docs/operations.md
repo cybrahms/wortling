@@ -28,6 +28,63 @@ Configure `HYPER_API_KEY`, or supply a private OAuth environment file through
 lock. Keep this file writable only by the service account. Configure model names,
 prompt versions, and budget limits for your own provider account.
 
+For Synthetic, add `SYNTHETIC_API_KEY` to the private `.env` and configure:
+
+```yaml
+llm:
+  base_url: https://api.synthetic.new/openai/v1
+  api_key_env: SYNTHETIC_API_KEY
+  models:
+    normalize: syn:small:vision
+    extract: syn:small:text
+    judge: syn:large:text
+    generate: syn:large:text
+  cost_per_million:
+    syn:small:vision: [0.6, 1.2]
+    syn:small:text: [0.1, 0.5]
+    syn:large:text: [0.6, 1.2]
+```
+
+An explicit `api_key_env` requires that credential and never falls back to Hyper.
+The normalize stage needs a vision model for image captures. Synthetic aliases
+follow the provider's current models; validate structured output after changes.
+These price estimates were read from Synthetic's `/models` response on 2026-10-17;
+refresh them when changing models. Account billing is authoritative when the
+provider does not return a cost in its usage metadata.
+
+## Operational monitoring
+
+`/v1/health` is API/SQLite liveness only. It does not establish that captures can
+be processed. Run `wortling ops-check --probe-provider` in the worker for a JSON
+snapshot and a nonzero exit on degradation. It reports aggregate counts and ages,
+without source text, credentials, or provider response bodies.
+
+The worker updates a heartbeat before and after each loop. The operational check
+flags a missing heartbeat or one older than 15 minutes, pending work more than
+15 minutes past its next attempt, failed jobs, expired running leases, all
+unacknowledged application alerts, missing/successful backups older than 30 hours,
+and collection syncs more than 30 minutes past their scheduled time. Pending work
+for a disabled learner is still reported: accepting captures without processing
+them must be visible. Provider probing authenticates `/models` and checks that
+all configured models exist. It does not spend inference tokens or prove that
+inference quotas and structured generation work; actual failures become queue
+and application-alert signals.
+
+On this macOS station, run `python3 deploy/install-monitor.py` to install an
+independent launchd check every five minutes. `scripts/monitor.py` checks API
+liveness and invokes the worker's operational check with a 60-second deadline.
+A stopped container, unavailable Docker, or timed-out probe therefore alerts
+even when the application cannot report its own health. The host and its logged-in
+launchd session must be running for this check to run.
+
+The watchdog uses the station's existing `~/.config/iris-telegram/{token,chat_id}`
+files, pages on new issues, repeats after an hour, and sends a recovery message.
+Failed delivery does not advance the notification state. Inspect
+`~/Library/Logs/wortling/monitor.log` for every snapshot and
+`~/.local/state/wortling-monitor/state.json` for the last delivery state.
+`python3 scripts/monitor.py --dry-run` checks without sending or changing state.
+Do not acknowledge application alerts until their underlying condition is resolved.
+
 ## Collections and writes
 
 Obtain the learner's permission before using real AnkiWeb credentials. Set
