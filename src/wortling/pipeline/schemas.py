@@ -17,13 +17,30 @@ class Normalized(StrictModel):
 
 
 class Candidate(StrictModel):
-    sentence_id: int = Field(ge=0)
-    lemma: str = Field(min_length=1, max_length=200)
-    surface: str = Field(min_length=1, max_length=200)
+    sentence_id: int = Field(
+        ge=0,
+        description="Copy the supplied sentence_id exactly; never renumber retained sentences.",
+    )
+    lemma: str = Field(
+        min_length=1,
+        max_length=200,
+        description="German dictionary form: noun WITH der/die/das (die Rechnung), "
+        "verb infinitive (erhalten, not erhältst), reflexive sich + infinitive + preposition. "
+        "Never copy an inflected surface or an article-free lookup key as the lemma.",
+    )
+    surface: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Exact source spelling and case, including inflection; split verb parts use ….",
+    )
     pos: Literal["noun", "verb", "adjective", "adverb", "phrase"]
     sense_gloss: str = Field(min_length=1, max_length=200)
     sense_key: str = Field(min_length=1, max_length=100)
-    is_phrase: bool
+    is_phrase: bool = Field(
+        description="False for individual nouns (even WITH their required article), "
+        "compound nouns, adjectives and single verbs. True only for multiword lexical "
+        "expressions such as zur Verfügung stehen or sich freuen auf."
+    )
     cefr_estimate: CEFR
     domain: str = Field(min_length=1, max_length=80)
 

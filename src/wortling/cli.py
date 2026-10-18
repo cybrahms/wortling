@@ -26,12 +26,14 @@ def main() -> None:
             "backup",
             "backup-verify",
             "setup-link",
+            "ops-check",
         ],
     )
     parser.add_argument("argument", nargs="?")
     parser.add_argument("--user", help="Learner ID; defaults to the first configured learner")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--probe-provider", action="store_true")
     parser.add_argument("--since", default="v1")
     parser.add_argument("--capture-id", help="Reprocess just this learner's capture")
     parser.add_argument(
@@ -44,7 +46,13 @@ def main() -> None:
     settings = load_settings(args.config)
     if args.user is None:
         args.user = settings.users[0].id
-    if args.command == "config-check":
+    if args.command == "ops-check":
+        from wortling.ops import operational_status
+
+        result = operational_status(settings, probe_provider=args.probe_provider)
+        print(json.dumps(result, sort_keys=True))
+        raise SystemExit(0 if result["status"] == "ok" else 1)
+    elif args.command == "config-check":
         print(f"Valid configuration: {len(settings.users)} learners")
     elif args.command == "init":
         Database(settings.data_dir).initialize(settings)
