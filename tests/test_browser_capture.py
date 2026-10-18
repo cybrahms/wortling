@@ -251,3 +251,16 @@ def test_cards_show_word_and_definition_with_full_card_collapsed(page):
     page.evaluate("report()")
     assert card.get_by_text("The meeting starts.", exact=True).is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+    cards_column = page.locator("#report").bounding_box()
+    tools_column = page.get_by_role("complementary", name="Captures and tools").bounding_box()
+    assert cards_column["y"] < tools_column["y"]
+    page.set_viewport_size({"width": 1280, "height": 900})
+    cards_column = page.locator("#report").bounding_box()
+    tools_column = page.get_by_role("complementary", name="Captures and tools").bounding_box()
+    assert cards_column["x"] + cards_column["width"] < tools_column["x"]
+    assert cards_column["y"] == tools_column["y"]
+    assert "Test · report" not in page.locator("body").inner_text()
+    assert "Processing paused." not in page.locator("body").inner_text()
+    assert "Anki writes disabled" not in page.locator("body").inner_text()
+    assert "Model cost this month" not in page.locator("body").inner_text()
