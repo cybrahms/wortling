@@ -343,9 +343,12 @@ def test_short_screenshot_labels_reach_extraction_even_if_normalize_omits_them(s
                     sentences=[SCOOTER_LABELS[0], SCOOTER_LABELS[2]],
                 )
             assert stage == "extract"
+            assert [sentence["sentence_id"] for sentence in data["sentences"]] == list(
+                range(len(data["sentences"]))
+            )
             for label in SCOOTER_LABELS:
-                assert any(label in sentence for sentence in data["sentences"]), label
-            assert all(sentence in transcript for sentence in data["sentences"])
+                assert any(label in sentence["text"] for sentence in data["sentences"]), label
+            assert all(sentence["text"] in transcript for sentence in data["sentences"])
             return Extracted(candidates=[])
 
     Pipeline(settings, Database(settings.data_dir), SparseNormalizer()).process(capture_id)
@@ -383,3 +386,41 @@ def test_phrase_cannot_be_deduped_against_its_base_verb():
         Candidate.model_validate(data)
     data.update(lemma="schief laufen", pos="phrase")
     assert Candidate.model_validate(data).lemma == "schief laufen"
+
+
+def test_extraction_ids_include_skipped_metadata_and_senses_are_lookup_keys(settings):
+    db = Database(settings.data_dir)
+    original = capture(settings, "Die Sitzung beginnt morgen.")
+    Pipeline(settings, db, RecordedClient()).process(original)
+    source = "12:30\nDie Sitzung beginnt morgen.\nshop.example.invalid"
+    second = capture(settings, source)
+
+    class IndexedClient(RecordedClient):
+        def call(self, stage, schema, data, *args, **kwargs):
+            if stage == "normalize":
+                return Normalized(
+                    mostly_german=True,
+                    reason="German",
+                    source_text=source,
+                    sentences=source.splitlines(),
+                )
+            if stage == "extract":
+                assert data["sentences"] == [
+                    {"sentence_id": 0, "text": "12:30"},
+                    {"sentence_id": 1, "text": "Die Sitzung beginnt morgen."},
+                    {"sentence_id": 2, "text": "shop.example.invalid"},
+                ]
+                assert data["existing_senses"] == [
+                    {"lemma_key": "sitzung", "sense_key": "meeting", "gloss": "meeting"}
+                ]
+                value = super().call(stage, schema, data, *args, **kwargs)
+                value.candidates[0].sentence_id = 1
+                return value
+            return super().call(stage, schema, data, *args, **kwargs)
+
+    Pipeline(settings, db, IndexedClient()).process(second)
+    with db.connect() as conn:
+        assert (
+            conn.execute("SELECT status FROM captures WHERE id=?", (second,)).fetchone()[0]
+            == "processed"
+        )

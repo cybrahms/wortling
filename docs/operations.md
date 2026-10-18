@@ -34,9 +34,10 @@ For Synthetic, add `SYNTHETIC_API_KEY` to the private `.env` and configure:
 llm:
   base_url: https://api.synthetic.new/openai/v1
   api_key_env: SYNTHETIC_API_KEY
+  reasoning_effort: none
   models:
     normalize: syn:small:vision
-    extract: syn:small:text
+    extract: syn:large:text
     judge: syn:large:text
     generate: syn:large:text
   cost_per_million:
@@ -44,6 +45,13 @@ llm:
     syn:small:text: [0.1, 0.5]
     syn:large:text: [0.6, 1.2]
 ```
+
+Set `reasoning_effort` explicitly for reasoning-capable models: hidden reasoning
+shares the output token budget with the required JSON. Omit the setting for
+providers that do not support it. A `finish_reason: length` response is reported
+as `output_truncated`, including token usage, without a redundant schema retry.
+A provider switch must pass real inference and semantic validation on a disposable
+copy of a capture before deployment; `/models` alone cannot establish compatibility.
 
 An explicit `api_key_env` requires that credential and never falls back to Hyper.
 The normalize stage needs a vision model for image captures. Synthetic aliases
