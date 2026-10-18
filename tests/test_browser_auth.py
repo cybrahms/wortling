@@ -157,14 +157,17 @@ def test_browser_setup_survives_new_tab_and_signout(settings):
         page.goto(link)
         assert page.url == BASE + "/setup"
         page.get_by_role("button", name="Continue", exact=True).click()
-        page.get_by_role("heading", name="Queued and mined cards").wait_for()
+        # Wait on the report section (#report is filled by the page's own script),
+        # not on its heading copy: a layout change rewrote that copy on 2026-10-18
+        # and turned this auth test red.
+        page.locator("#report h2").wait_for()
         assert COOKIE not in page.evaluate("document.cookie")
         cookie = next(cookie for cookie in context.cookies() if cookie["name"] == COOKIE)
         assert cookie["httpOnly"] and cookie["secure"]
         assert cookie["expires"] > 0
         second = context.new_page()
         second.goto(BASE)
-        second.get_by_role("heading", name="Queued and mined cards").wait_for()
+        second.locator("#report h2").wait_for()
         second.get_by_role("button", name="Sign out", exact=True).click()
         second.wait_for_function("document.querySelector('#status').textContent==='Signed out.'")
         second.reload()
