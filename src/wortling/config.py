@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -88,11 +89,12 @@ class LLMSettings(StrictModel):
     )
     prompt_versions: dict[str, str] = Field(
         default_factory=lambda: {
-            stage: ({"normalize": "v4", "extract": "v4", "judge": "v2", "generate": "v2"}[stage])
+            stage: ({"normalize": "v4", "extract": "v5", "judge": "v2", "generate": "v2"}[stage])
             for stage in ("normalize", "extract", "judge", "generate")
         }
     )
     max_output_tokens: int = Field(default=6000, ge=256, le=16000)
+    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
     cost_per_million: dict[str, tuple[float, float]] = Field(
         default_factory=lambda: {
             "qwen3.8-flash": (0.15, 0.47),

@@ -68,6 +68,8 @@ class LLMClient:
                     },
                 },
             }
+            if config.reasoning_effort is not None:
+                body["reasoning_effort"] = config.reasoning_effort
             try:
                 with httpx.Client(transport=self.transport, timeout=120) as client:
                     response = client.post(
@@ -83,6 +85,12 @@ class LLMClient:
                 raise RuntimeError(f"LLM {stage} call failed (HTTP {response.status_code})")
             result = response.json()
             usage = result.get("usage", {})
+            if result.get("choices") and result["choices"][0].get("finish_reason") == "length":
+                self.log(user, run_id, stage, model, version, usage, "output_truncated")
+                raise ValueError(
+                    f"LLM {stage} output truncated at {config.max_output_tokens} tokens; "
+                    "check reasoning_effort and output budget"
+                )
             output = ""
             try:
                 output = result["choices"][0]["message"]["content"]
