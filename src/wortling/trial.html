@@ -2,12 +2,16 @@
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Wortling</title>
 <style>
-:root{font-family:system-ui,sans-serif;color:#242a26;background:#f3f4ee}body{max-width:760px;margin:auto;padding:28px 20px}h1{font-size:38px;margin-bottom:0}p{line-height:1.5}input,textarea,button{font:inherit;border:1px solid #abb3a9;border-radius:7px;padding:11px;box-sizing:border-box}input,textarea{width:100%;background:white;margin:5px 0 14px}textarea{min-height:110px}button{background:#244b39;color:white;cursor:pointer;margin:0 8px 12px 0}label{display:block;font-weight:600}article{background:#fff;padding:18px;border-radius:10px;margin:14px 0}small{color:#546457}pre{white-space:pre-wrap;overflow-wrap:anywhere}.error{color:#9c2929}#status{min-height:1.5em}details{margin:12px 0}summary{cursor:pointer}nav{margin-top:22px}a{color:#244b39}.capture-preview{white-space:pre-wrap;overflow-wrap:anywhere}.capture-image{display:block;max-width:100%;max-height:280px;margin:12px auto;object-fit:contain}#latest-capture article{border-left:4px solid #244b39}#latest-capture h2{margin-bottom:0}
+:root{font-family:system-ui,sans-serif;color:#242a26;background:#f3f4ee}body{max-width:1200px;margin:auto;padding:28px 20px}h1{font-size:38px;margin-bottom:0}p{line-height:1.5}input,textarea,button{font:inherit;border:1px solid #abb3a9;border-radius:7px;padding:11px;box-sizing:border-box}input,textarea{width:100%;background:white;margin:5px 0 14px}textarea{min-height:110px}button{background:#244b39;color:white;cursor:pointer;margin:0 8px 12px 0}label{display:block;font-weight:600}article{background:#fff;padding:18px;border-radius:10px;margin:14px 0}small{color:#546457}pre{white-space:pre-wrap;overflow-wrap:anywhere}.error{color:#9c2929}#status{min-height:1.5em}details{margin:12px 0}summary{cursor:pointer}nav{margin-top:22px}a{color:#244b39}.capture-preview{white-space:pre-wrap;overflow-wrap:anywhere}.capture-image{display:block;max-width:100%;max-height:280px;margin:12px auto;object-fit:contain}#latest-capture article{border-left:4px solid #244b39}#latest-capture h2{margin-bottom:0}
 .card-row{padding:10px 14px;margin:6px 0}.card-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.card-row h3{font-size:1rem;margin:0}.card-row p{margin:4px 0}.card-meta{font-size:.75rem}.card-row details{margin:6px 0 0}.card-row summary{font-size:.8rem;color:#546457}.card-row .definition{line-height:1.35}#manual-capture>summary{font-weight:600}#manual-capture section{margin-top:14px}#status:empty{display:none}@media(max-width:480px){.card-heading{display:block}.card-meta{display:block;margin-top:3px}}
+#workspace{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:32px;align-items:start}#workspace>*{min-width:0}#workspace h2{margin-top:0;font-size:1.25rem}.card-row{overflow-wrap:anywhere}.card-heading{flex-wrap:wrap}#capture-context{margin-top:20px}@media(max-width:700px){#workspace{grid-template-columns:minmax(0,1fr);gap:24px}}
 </style>
 <h1>Wortling<span aria-hidden="true"> ·</span></h1><p>German you meet in the world, saved for learning.</p>
 <p id="signin" hidden>Open your personal setup link to sign in. Ask your service operator for a new link if needed.</p>
 <nav><button id="connect">Open my report</button><button id="forget">Sign out</button></nav>
+<main id="workspace">
+<section id="report" aria-label="Queued and mined cards"></section>
+<aside aria-label="Captures and tools">
 <section id="latest-capture" aria-label="Latest capture" hidden></section>
 <details id="manual-capture"><summary>Add a capture manually</summary>
 <section aria-label="Capture German"><label for="text">What did you see or hear?</label><textarea id="text" placeholder="Die Sitzung findet morgen statt."></textarea>
@@ -21,7 +25,8 @@
 <p id="shortcut-status" role="status"></p><input id="shortcut-key-fallback" aria-label="Shortcut key" readonly hidden autocomplete="off">
 <p>Then share selected text, a page, or a photo → Capture German. Keep Tailscale on. Running the Shortcut directly asks for typed text.</p>
 </details>
-<div id="report"></div>
+<div id="capture-context"></div>
+</aside></main>
 <script>
 const byId=id=>document.getElementById(id);sessionStorage.removeItem('wortling-token');
 function message(text,error=false){byId('status').textContent=text;byId('status').className=error?'error':''}
@@ -55,7 +60,7 @@ function capturePreview(capture,parent,enabled,{image=false,compact=false}={}){
 async function report(){
  clearTimeout(reportTimer);
  const data=await api('/v1/report');
- const expanded=[...document.querySelectorAll('#report details[open],#latest-capture details[open]')].map(node=>node.id).filter(Boolean);
+ const expanded=[...document.querySelectorAll('#workspace details[open]')].map(node=>node.id).filter(Boolean);
  const latest=byId('latest-capture');latest.replaceChildren();latest.hidden=!data.captures.length;
  if(data.captures.length){
   element('h2','Latest capture',latest);
@@ -63,12 +68,10 @@ async function report(){
   box.dataset.latestCapture=data.captures[0].id;
  }
  const root=byId('report');root.replaceChildren();
- element('h2',data.learner+' · report',root);
- element('p',(data.processing_enabled?'Processing enabled. ':'Processing paused. ')+(data.writes_enabled?'Anki writes enabled.':'Dry run: Anki writes disabled.'),root);
- if(!data.known_index.entries)element('p','Existing Anki decks are not indexed yet. Duplicate filtering against those decks is unverified.',root);
- element('small','Model cost this month: $'+data.usage_month.cost_usd.toFixed(4),root);
+ const context=byId('capture-context');context.replaceChildren();
+ if(!data.known_index.entries)element('p','Existing Anki decks are not indexed yet. Duplicate filtering against those decks is unverified.',context);
  for(const alert of data.alerts){
-  const box=element('article','',root);
+  const box=element('article','',context);
   element('strong',alert.kind==='capture_failed'?'A capture needs attention':alert.kind,box);
   element('small',new Date(alert.created_at).toLocaleString(),box);
   if(alert.capture_id){const link=element('a','Capture '+alert.capture_id,box);link.href='#capture-'+encodeURIComponent(alert.capture_id);link.onclick=()=>{byId('capture-history').open=true};element('p',alert.capture_text||alert.capture_url||'Image capture',box)}
@@ -79,7 +82,7 @@ async function report(){
  const waiting=data.captures.filter(c=>['pending','running','failed'].includes(c.processing_status));
  const otherWaiting=waiting.filter(c=>c.id!==data.captures[0]?.id);
  if(otherWaiting.length){
-  const group=element('details','',root);group.id='other-captures';
+  const group=element('details','',context);group.id='other-captures';
   element('summary',otherWaiting.length+' more saved captures · processing status',group);
   for(const capture of otherWaiting)capturePreview(capture,group,data.processing_enabled,{compact:true});
  }
@@ -96,7 +99,7 @@ async function report(){
   if(card.fields.Forms)element('p',decode(card.fields.Forms),full);
   element('p',decode(card.fields.SentenceEN),full);element('small',decode(card.fields.Source||''),full);
  }
- const history=element('details','',root);history.id='capture-history';
+ const history=element('details','',context);history.id='capture-history';
  element('summary','Recent captures ('+data.captures.length+')',history);
  for(const capture of data.captures){
   const box=element('article','',history);box.id='capture-'+capture.id;
@@ -104,7 +107,7 @@ async function report(){
   element('p',capture.text||capture.url||'Image capture',box).className='capture-preview';
   if(capture.error)element('p',capture.error,box);
  }
- const details=element('details','',root);details.id='capture-decisions';element('summary','Why items were kept or dropped',details);
+ const details=element('details','',context);details.id='capture-decisions';element('summary','Why items were kept or dropped',details);
  for(const decision of data.decisions)element('p',(decision.lemma||'Capture')+' · '+decision.stage+' · '+decision.outcome+': '+decision.reason,details);
  for(const id of expanded){const node=byId(id);if(node)node.open=true}
  if(data.processing_enabled&&waiting.some(c=>['pending','running'].includes(c.processing_status)))reportTimer=setTimeout(()=>report().catch(()=>message('Could not refresh processing status. Tap Open my report.',true)),5000);
@@ -120,7 +123,7 @@ byId('shortcut-key').onclick=async()=>{
   catch(error){byId('shortcut-status').textContent=error.message}
  }
 };
-byId('connect').onclick=()=>report().catch(e=>message(e.message,true));byId('forget').onclick=async()=>{clearTimeout(reportTimer);try{await api('/v1/session',{method:'DELETE'});byId('report').replaceChildren();byId('latest-capture').replaceChildren();byId('latest-capture').hidden=true;byId('shortcut-key-fallback').value='';byId('shortcut-key-fallback').hidden=true;byId('shortcut-status').textContent='';byId('signin').hidden=false;pending=null;message('Signed out.')}catch(e){message(e.message,true)}};
+byId('connect').onclick=()=>report().catch(e=>message(e.message,true));byId('forget').onclick=async()=>{clearTimeout(reportTimer);try{await api('/v1/session',{method:'DELETE'});byId('report').replaceChildren();byId('capture-context').replaceChildren();byId('latest-capture').replaceChildren();byId('latest-capture').hidden=true;byId('shortcut-key-fallback').value='';byId('shortcut-key-fallback').hidden=true;byId('shortcut-status').textContent='';byId('signin').hidden=false;pending=null;message('Signed out.')}catch(e){message(e.message,true)}};
 report().catch(e=>message(e.message,true));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)report().catch(()=>{})});
 async function imagePayload(file){
