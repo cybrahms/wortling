@@ -23,7 +23,8 @@ def learner_report(db: Database, user: Learner) -> dict:
         ]
         cards = []
         for row in conn.execute(
-            "SELECT * FROM cards WHERE user_id=? ORDER BY updated_at DESC LIMIT 100", (user.id,)
+            "SELECT * FROM cards WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 100",
+            (user.id,),
         ):
             card = dict(row)
             card["fields"] = json.loads(card.pop("fields_json"))

@@ -48,6 +48,7 @@ def test_image_upload_without_bitmap_decoder(page):
 
     page.route("**/v1/captures", receive)
     page.goto("https://wortling.test/")
+    page.locator("#manual-capture summary").click()
     image = io.BytesIO()
     Image.new("RGB", (2400, 1200), "white").save(image, "JPEG")
     page.locator("#image").set_input_files(
@@ -66,6 +67,7 @@ def test_undecodable_photo_has_actionable_error_and_is_not_sent(page):
     sent = []
     page.route("**/v1/captures", lambda route: sent.append(route.request))
     page.goto("https://wortling.test/")
+    page.locator("#manual-capture summary").click()
     page.locator("#image").set_input_files(
         {"name": "broken.heic", "mimeType": "image/heic", "buffer": b"invalid image"}
     )
@@ -111,6 +113,7 @@ def test_capture_appears_in_queue_then_refreshes_when_done(page):
     page.route("**/v1/report", report)
     page.route("**/v1/captures", receive)
     page.goto("https://wortling.test/")
+    page.locator("#manual-capture summary").click()
     image = io.BytesIO()
     Image.new("RGB", (20, 20), "white").save(image, "JPEG")
     page.locator("#image").set_input_files(
@@ -190,7 +193,8 @@ def test_latest_capture_precedes_form_and_other_shared_messages_are_collapsed(pa
     latest = page.locator("#latest-capture")
     latest.get_by_text("Bitte Sportsachen mitgeben.\nDanke!", exact=True).wait_for()
     assert "queued for processing" in latest.inner_text()
-    assert latest.bounding_box()["y"] < page.locator("#text").bounding_box()["y"]
+    assert page.locator("#text").is_hidden()
+    assert latest.bounding_box()["y"] < page.locator("#manual-capture").bounding_box()["y"]
     other = page.locator('[data-pending-capture="1"]')
     assert other.is_hidden()
     page.get_by_text("2 more saved captures · processing status", exact=True).click()
@@ -200,3 +204,50 @@ def test_latest_capture_precedes_form_and_other_shared_messages_are_collapsed(pa
     page.evaluate("report()")
     assert other.is_visible()
     assert page.locator("#capture-1").is_visible()
+
+
+def test_cards_show_word_and_definition_with_full_card_collapsed(page):
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.route(
+        "**/v1/report",
+        lambda route: route.fulfill(
+            json={
+                "learner": "Test",
+                "processing_enabled": False,
+                "writes_enabled": False,
+                "known_index": {"entries": 100},
+                "usage_month": {"cost_usd": 0},
+                "alerts": [],
+                "cards": [
+                    {
+                        "id": "meeting",
+                        "status": "pending",
+                        "created_at": "2026-10-18T10:00:00+00:00",
+                        "fields": {
+                            "Lemma": "die Sitzung",
+                            "Gloss": "meeting &amp; session",
+                            "CEFR": "B1",
+                            "Text": "Die {{c1::Sitzung}} beginnt.",
+                            "SentenceEN": "The meeting starts.",
+                            "Forms": "Sitzungen",
+                            "Source": "school",
+                        },
+                    }
+                ],
+                "captures": [],
+                "decisions": [],
+            }
+        ),
+    )
+    page.goto("https://wortling.test/")
+    card = page.locator('[data-card-id="meeting"]')
+    card.wait_for()
+    assert card.get_by_role("heading", name="die Sitzung").is_visible()
+    assert card.get_by_text("meeting & session", exact=True).is_visible()
+    assert card.get_by_text("Die {{c1::Sitzung}} beginnt.", exact=True).is_hidden()
+    assert card.bounding_box()["height"] < 150
+    card.get_by_text("Full card", exact=True).click()
+    assert card.get_by_text("Die {{c1::Sitzung}} beginnt.", exact=True).is_visible()
+    page.evaluate("report()")
+    assert card.get_by_text("The meeting starts.", exact=True).is_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

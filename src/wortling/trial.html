@@ -3,15 +3,18 @@
 <title>Wortling</title>
 <style>
 :root{font-family:system-ui,sans-serif;color:#242a26;background:#f3f4ee}body{max-width:760px;margin:auto;padding:28px 20px}h1{font-size:38px;margin-bottom:0}p{line-height:1.5}input,textarea,button{font:inherit;border:1px solid #abb3a9;border-radius:7px;padding:11px;box-sizing:border-box}input,textarea{width:100%;background:white;margin:5px 0 14px}textarea{min-height:110px}button{background:#244b39;color:white;cursor:pointer;margin:0 8px 12px 0}label{display:block;font-weight:600}article{background:#fff;padding:18px;border-radius:10px;margin:14px 0}small{color:#546457}pre{white-space:pre-wrap;overflow-wrap:anywhere}.error{color:#9c2929}#status{min-height:1.5em}details{margin:12px 0}summary{cursor:pointer}nav{margin-top:22px}a{color:#244b39}.capture-preview{white-space:pre-wrap;overflow-wrap:anywhere}.capture-image{display:block;max-width:100%;max-height:280px;margin:12px auto;object-fit:contain}#latest-capture article{border-left:4px solid #244b39}#latest-capture h2{margin-bottom:0}
+.card-row{padding:10px 14px;margin:6px 0}.card-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.card-row h3{font-size:1rem;margin:0}.card-row p{margin:4px 0}.card-meta{font-size:.75rem}.card-row details{margin:6px 0 0}.card-row summary{font-size:.8rem;color:#546457}.card-row .definition{line-height:1.35}#manual-capture>summary{font-weight:600}#manual-capture section{margin-top:14px}#status:empty{display:none}@media(max-width:480px){.card-heading{display:block}.card-meta{display:block;margin-top:3px}}
 </style>
 <h1>Wortling<span aria-hidden="true"> ·</span></h1><p>German you meet in the world, saved for learning.</p>
 <p id="signin" hidden>Open your personal setup link to sign in. Ask your service operator for a new link if needed.</p>
 <nav><button id="connect">Open my report</button><button id="forget">Sign out</button></nav>
 <section id="latest-capture" aria-label="Latest capture" hidden></section>
+<details id="manual-capture"><summary>Add a capture manually</summary>
 <section aria-label="Capture German"><label for="text">What did you see or hear?</label><textarea id="text" placeholder="Die Sitzung findet morgen statt."></textarea>
 <label for="url">Source URL (optional)</label><input id="url" type="url" placeholder="https://…">
 <label for="image">Photo or screenshot (optional)</label><input id="image" type="file" accept="image/*">
-<button id="capture">Capture</button><div id="status" role="status" aria-live="polite"></div></section>
+<button id="capture">Capture</button></section></details>
+<div id="status" role="status" aria-live="polite"></div>
 <details id="iphone-setup"><summary>Set up iPhone sharing</summary>
 <p>1. Copy your personal Shortcut key. 2. Install Capture German and paste the key when asked.</p>
 <button id="shortcut-key">Copy Shortcut key</button> <a href="/v1/shortcut">Install Capture German v3</a>
@@ -72,6 +75,7 @@ async function report(){
   element('p',alert.message,box);
  }
  element('h2','Queued and mined cards',root);
+ element('small','Newest added first',root);
  const waiting=data.captures.filter(c=>['pending','running','failed'].includes(c.processing_status));
  const otherWaiting=waiting.filter(c=>c.id!==data.captures[0]?.id);
  if(otherWaiting.length){
@@ -81,10 +85,16 @@ async function report(){
  }
  if(!data.cards.length&&!waiting.length)element('p','No cards yet. Capture some German to get started.',root);
  for(const card of data.cards){
-  const box=element('article','',root);element('small',card.status+' · '+card.fields.CEFR,box);
-  element('h3',decode(card.fields.Lemma),box);element('p',decode(card.fields.Text),box);
-  if(card.fields.Forms)element('p',decode(card.fields.Forms),box);
-  element('p',decode(card.fields.SentenceEN),box);element('small',decode(card.fields.Source||''),box);
+  const box=element('article','',root);box.className='card-row';box.dataset.cardId=card.id;
+  const heading=element('div','',box);heading.className='card-heading';
+  element('h3',decode(card.fields.Lemma),heading);
+  const meta=element('small',card.status+' · '+card.fields.CEFR+' · '+new Date(card.created_at).toLocaleString(),heading);meta.className='card-meta';
+  element('p',decode(card.fields.Gloss||''),box).className='definition';
+  const full=element('details','',box);full.id='card-details-'+card.id;
+  element('summary','Full card',full);
+  element('p',decode(card.fields.Text),full);
+  if(card.fields.Forms)element('p',decode(card.fields.Forms),full);
+  element('p',decode(card.fields.SentenceEN),full);element('small',decode(card.fields.Source||''),full);
  }
  const history=element('details','',root);history.id='capture-history';
  element('summary','Recent captures ('+data.captures.length+')',history);
