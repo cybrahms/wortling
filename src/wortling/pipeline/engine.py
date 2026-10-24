@@ -110,7 +110,11 @@ _TRAILING_FUNCTION = frozenset(
 
 def _split_at(text: str, pattern: re.Pattern[str]) -> list[str]:
     cuts = [0] + [match.end() for match in pattern.finditer(text)] + [len(text)]
-    return [text[left:right] for left, right in zip(cuts, cuts[1:]) if text[left:right].strip()]
+    return [
+        text[left:right]
+        for left, right in zip(cuts[:-1], cuts[1:], strict=True)
+        if text[left:right].strip()
+    ]
 
 
 def _fits(text: str, max_chars: int, max_words: int) -> bool:
@@ -246,7 +250,9 @@ def preserve_short_source(value: Normalized) -> None:
     lines = [line.strip() for line in value.source_text.splitlines() if line.strip()]
     if len(lines) > 30 or len(value.source_text.split()) > 1000:
         return
-    covered = {token.lower() for sentence in value.sentences for token in _WORD_TOKEN.findall(sentence)}
+    covered = {
+        token.lower() for sentence in value.sentences for token in _WORD_TOKEN.findall(sentence)
+    }
     for line in lines:
         tokens = {token.lower() for token in _WORD_TOKEN.findall(line)}
         if tokens and tokens <= covered:
@@ -458,9 +464,7 @@ class Pipeline:
         # candidate that a neighbouring line already produced.
         normalized.sentences = list(
             dict.fromkeys(
-                piece
-                for sentence in normalized.sentences
-                for piece in segment_candidates(sentence)
+                piece for sentence in normalized.sentences for piece in segment_candidates(sentence)
             )
         )
         with self.db.connect() as conn:
