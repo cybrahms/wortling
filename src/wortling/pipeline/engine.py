@@ -83,15 +83,18 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
 SPAN_MAX_CHARS = 100
 SPAN_MAX_WORDS = 15
 
-# Sentence punctuation first; a dash or colon separates two thoughts as surely as
-# a full stop does. The clause pattern splits *before* a coordinator or
-# subordinator, so the candidate that follows still reads as a phrase ("und die
-# Sendungsverfolgung ...") rather than a clause with the join cut off the end.
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…;:–—])\s+")
+# Sentence punctuation, but not every period: "z. B.", "Nr. 3" and "d. h." are
+# inside a sentence, and splitting there produces "Wir liefern z." -- worse than
+# the paragraph it replaced. A boundary after . ! ? also requires the next word to
+# start a sentence; ; : and dashes need no such evidence.
 _CLAUSE_SPLIT = re.compile(
     r"(?<=\s)(?=(?:und|oder|aber|denn|sondern|weil|dass|daß|wenn|obwohl|damit|während|"
     r"bevor|nachdem|sobald|sofern|sowie|dennoch|trotzdem|deshalb|deswegen)\b)",
     re.IGNORECASE,
+)
+_ABBREVIATIONS = frozenset(
+    """nr ca str tel bzw usw ggf inkl exkl max min mio mrd std dr abs art
+    z b d h u a s o vgl evtl ggfs""".split()
 )
 _WORD = re.compile(r"\w", re.UNICODE)
 _WORD_TOKEN = re.compile(r"[\wäöüÄÖÜß]+")
@@ -115,6 +118,56 @@ def _split_at(text: str, pattern: re.Pattern[str]) -> list[str]:
         for left, right in zip(cuts[:-1], cuts[1:], strict=True)
         if text[left:right].strip()
     ]
+
+
+def _closes_a_sentence(text: str, end: int) -> bool:
+    """Whether the punctuation run ending at `end` closes a sentence."""
+    punctuation = text[end - 1]
+    if punctuation in "…;:–—":
+        return True
+    token = re.search(r"(\S+)$", text[: end - 1])
+    if token is None:
+        return True
+    word = token.group(1).strip("\"'„“”()[]").lower()
+    if len(word) == 1 or word in _ABBREVIATIONS:
+        return False
+    following = text[end:].lstrip()
+    return bool(following) and following[:1].isupper()
+
+
+def _split_sentences(text: str) -> list[str]:
+    cuts: list[int] = []
+    for match in re.finditer(r"[.!?…;:–—]+\s+", text):
+        if _closes_a_sentence(text, match.start() + len(match.group(0).rstrip())):
+            cuts.append(match.end())
+    boundaries = [0, *cuts, len(text)]
+    return [
+        text[left:right]
+        for left, right in zip(boundaries[:-1], boundaries[1:], strict=True)
+        if text[left:right].strip()
+    ]
+
+
+def _split_lines(text: str) -> list[str]:
+    """A printed line break before a capitalised word starts a new span.
+
+    OCR captures wrap mid-sentence, so a newline is not a boundary on its own --
+    but when the next line begins a sentence, joining it to the previous line is
+    how two unrelated sentences ended up in one card. A line continuing after a
+    comma, colon or dash is left joined.
+    """
+    pieces, start = [], 0
+    for match in re.finditer(r"\n\s*", text):
+        before = text[: match.start()].rstrip()
+        after = text[match.end() :].lstrip()
+        if not before or before[-1] in ",:;–—-":
+            continue
+        if not after or not after[:1].isupper():
+            continue
+        pieces.append(text[start : match.start()])
+        start = match.end()
+    pieces.append(text[start:])
+    return [piece for piece in pieces if piece.strip()]
 
 
 def _fits(text: str, max_chars: int, max_words: int) -> bool:
@@ -157,22 +210,33 @@ def segment_candidates(
 ) -> list[str]:
     """Cut one verbatim span into candidates short enough to quote on a card.
 
-    Three turns of the same screw, applied only when the previous one left an
-    oversized piece: sentence punctuation, then clause boundaries, then a cut at
-    the cap between two words. Every piece is a contiguous, word-bounded slice of
+    A span that already fits is returned untouched: splitting it would only take
+    a correct sentence apart, which is the defect this function exists to fix.
+
+    Otherwise four turns of the same screw, each applied only where the previous
+    one left an oversized piece: a closing sentence punctuation mark, a printed
+    line break before a new sentence, a clause boundary, and finally a cut at the
+    cap between two words. Every piece is a contiguous, word-bounded slice of
     `text`, so nothing is rewritten, repaired or reordered -- a token the source
     truncated stays truncated, and is never stitched back into a word.
     """
+    if _fits(text, max_chars, max_words):
+        return [text.strip()]
+
     pieces: list[str] = []
-    for sentence in _split_at(text, _SENTENCE_SPLIT):
+    for sentence in _split_sentences(text):
         if _fits(sentence, max_chars, max_words):
             pieces.append(sentence)
             continue
-        for clause in _split_at(sentence, _CLAUSE_SPLIT):
-            if _fits(clause, max_chars, max_words):
-                pieces.append(clause)
-            else:
-                pieces.extend(_cut_at_word_boundaries(clause, max_chars, max_words))
+        for line in _split_lines(sentence):
+            if _fits(line, max_chars, max_words):
+                pieces.append(line)
+                continue
+            for clause in _split_at(line, _CLAUSE_SPLIT):
+                if _fits(clause, max_chars, max_words):
+                    pieces.append(clause)
+                else:
+                    pieces.extend(_cut_at_word_boundaries(clause, max_chars, max_words))
     return [piece.strip() for piece in pieces if piece.strip()]
 
 
@@ -204,6 +268,12 @@ def shortest_span(sentences: list[str], surface: str) -> int | None:
     the paragraph containing it will sometimes pick the paragraph. Rebinding to
     the shortest candidate that still holds the surface makes 'the card quotes
     the clause the word came from' a property of the code rather than a hope.
+
+    This is the one place the model's read is discarded for a heuristic. When the
+    same surface occurs in two spans, the shorter one wins even if the gloss was
+    written for the other occurrence; the lemma and sense are unchanged, so the
+    card is still correct, but the quoted context may be the second sighting
+    rather than the one that produced the gloss.
     """
     parts = [part.strip() for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface) if part.strip()]
     best: int | None = None
