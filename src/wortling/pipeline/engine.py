@@ -78,10 +78,68 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
             position = found + len(segment)
 
 
-# A card quotes one span. Long enough to read on a phone, short enough that the
-# card shows the clause the word came from instead of a paragraph.
-SPAN_MAX_CHARS = 100
-SPAN_MAX_WORDS = 15
+# A card quotes one span. This is a ceiling, not a target: a span is cut only when
+# the capture holds more than one card's worth of text, because context outranks
+# brevity. "Ich moechte ein Auto umschreiben" is short and teaches nothing; the
+# sentence it was carved out of was worth keeping whole.
+SPAN_MAX_CHARS = 140
+SPAN_MAX_WORDS = 25
+
+# A card needs a sentence, not a label. These are the finite verb forms that carry
+# a German clause -- auxiliaries, modals and the high-frequency lexical verbs in the
+# persons and tenses real captures use. Labels ("App-Fehler", "Niedriger
+# Batteriestand", "Fotoabzuege 10 x 15 cm Express-Abholung") contain none of them,
+# and a capture of labels should produce no cards rather than one-word orphans.
+FINITE_FORMS = frozenset(
+    """ist sind bin bist seid war waren wart
+    hat hast habe haben habt hatte hattest hatten hattet
+    wird wirst werden werdet wurde wurden wurdest wurdet
+    kann kannst koennen koennt konnte konnten konntest
+    muss musst muessen muesst musste mussten musstest
+    darf darfst duerfen duerft durfte durften
+    soll sollst sollen sollt sollte sollten solltest
+    will willst wollen wollt wollte wollten
+    moechte moechtest moechten moechtet mochte mochten mag magst moegen
+    weiss weisst wissen wisst wusste wussten
+    gibt geben gebe gebt gab gaben
+    geht gehen gehe gehst ging gingen
+    kommt kommen komme kommst kam kamen
+    nimmt nehmen nehme nimmst nahm nahmen
+    macht machen mache machst machte machten
+    sagt sagen sage sagst sagte sagten
+    bringt bringen bringe bringst brachte brachten
+    findet finden finde findest fand fanden
+    steht stehen stehe stehst stand standen
+    liegt liegen liege liegst lag lagen
+    bleibt bleiben bleibe bleibst blieb blieben
+    faehrt fahren fahre faehrst fuhr fuhren
+    laeuft laufen laufe laeufst lief liefen
+    tut tust tue
+    sieht sehen sehe siehst sah sahen
+    schickt schicken schicke schickst schickte schickten
+    braucht brauchen brauche brauchst brauchte brauchten
+    kostet kosten koste kostest kostete kosteten
+    dauert dauern dauere dauerst dauerte dauerten
+    gilt gelten gelte giltst galt galten
+    fehlt fehlen fehle fehlst fehlte fehlten
+    hilft helfen helfe hilfst half halfen
+    arbeitet arbeiten arbeite arbeitest arbeitete arbeiteten
+    wohnt wohnen wohne wohnst wohnte wohnten
+    sucht suchen suche suchst suchte suchten
+    stellt stellen stelle stellst stellte stellten
+    holt holen hole holst holte holten
+    legt legen lege legst legte legten
+    laesst lassen lasse laesst liess liessen
+    meldet melden melde meldest meldete meldeten
+    zahlt zahlen zahle zahlst zahlte zahlten
+    bucht buchen buche buchst buchte buchten
+    bestellt bestellen bestelle bestellst bestellte bestellten
+    liefert liefern liefere lieferst lieferte lieferten
+    reserviert reservieren reserviere reservierst reservierte
+    funktioniert funktionieren funktioniere funktionierst funktionierte
+    sendet senden sende sendest sendete sendeten
+    """.split()
+)
 
 # Sentence punctuation, but not every period: "z. B.", "Nr. 3" and "d. h." are
 # inside a sentence, and splitting there produces "Wir liefern z." -- worse than
@@ -261,13 +319,41 @@ def cuts_mid_word(source: str, span: str) -> bool:
         start = index + 1
 
 
-def shortest_span(sentences: list[str], surface: str) -> int | None:
-    """Index of the shortest candidate that contains the whole surface, or None.
+def looks_like_a_sentence(text: str) -> bool:
+    """True when the span can carry a card: a clause, not a label.
 
-    Extraction names a sentence_id, and a model that was given both a clause and
-    the paragraph containing it will sometimes pick the paragraph. Rebinding to
-    the shortest candidate that still holds the surface makes 'the card quotes
-    the clause the word came from' a property of the code rather than a hope.
+    A label is capture text, not vocabulary in use: "App-Fehler", "Niedriger
+    Batteriestand" and "Fotoabzuege 10 x 15 cm Express-Abholung (Papier:
+    Glaenzend)" have no verb and no subject, so a card built from one is an
+    orphan word. The test is a finite verb where the list knows one, and
+    otherwise the lowercase words a German clause is made of -- articles,
+    pronouns, prepositions, adverbs. Title case plus units is a label. Erring
+    towards "this is a sentence" is deliberate: the judge rejects banality, and
+    a missed label costs one card, while a false rejection loses real vocabulary.
+    """
+    tokens = [re.sub(r"^\W+|\W+$", "", token) for token in text.split()]
+    tokens = [token for token in tokens if len(token) > 1]
+    if len(tokens) < 2:
+        return False
+    fold = str.casefold
+    known = {
+        fold(token).replace("ü", "ue").replace("ö", "oe").replace("ä", "ae").replace("ß", "ss")
+        for token in tokens
+    }
+    if known & FINITE_FORMS:
+        return True
+    return sum(1 for token in tokens[1:] if token[:1].islower()) >= 2
+
+
+def best_span(sentences: list[str], surface: str) -> int | None:
+    """Index of the span to quote for `surface`, or None.
+
+    Extraction names a sentence_id, and a model given both a clause and the
+    sentence holding it will sometimes pick the clause. Rebinding prefers the
+    shortest span that contains the whole surface *and* reads as a sentence,
+    because context outranks brevity: a two-word clause is short and teaches
+    nothing. When no candidate reads as a sentence the shortest containing span
+    stands, and the extraction gate then drops it with a reason.
 
     This is the one place the model's read is discarded for a heuristic. When the
     same surface occurs in two spans, the shorter one wins even if the gloss was
@@ -276,7 +362,7 @@ def shortest_span(sentences: list[str], surface: str) -> int | None:
     rather than the one that produced the gloss.
     """
     parts = [part.strip() for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface) if part.strip()]
-    best: int | None = None
+    matches: list[int] = []
     for index, sentence in enumerate(sentences):
         position = 0
         for part in parts:
@@ -285,9 +371,12 @@ def shortest_span(sentences: list[str], surface: str) -> int | None:
                 break
             position = found + len(part)
         else:
-            if best is None or len(sentence) < len(sentences[best]):
-                best = index
-    return best
+            matches.append(index)
+    if not matches:
+        return None
+    sentence_like = [index for index in matches if looks_like_a_sentence(sentences[index])]
+    pool = sentence_like or matches
+    return min(pool, key=lambda index: len(sentences[index]))
 
 
 def validate_normalized(value: Normalized, source_text: str | None, image: bool) -> None:
@@ -599,7 +688,7 @@ class Pipeline:
             for item in extracted.candidates:
                 if item.sentence_id >= len(normalized.sentences):
                     raise ValueError("Extract referenced a missing sentence")
-                best = shortest_span(normalized.sentences, item.surface)
+                best = best_span(normalized.sentences, item.surface)
                 if best is not None:
                     item.sentence_id = best
                 sentence = normalized.sentences[item.sentence_id]
@@ -611,6 +700,20 @@ class Pipeline:
                     if not segment or found < 0:
                         raise ValueError("Extract surface is absent from original sentence")
                     position = found + len(segment)
+                if not explicit and not looks_like_a_sentence(sentence):
+                    # A label is not vocabulary in use. Record the reason, so a report
+                    # shows why the capture produced no card instead of one orphan word.
+                    # An explicit lookup keeps its card: the learner asked for that word,
+                    # and a bare noun is what they asked about.
+                    self.decision(
+                        conn,
+                        run_id,
+                        None,
+                        "extract",
+                        "skipped",
+                        f"Span {sentence!r} has no finite verb, so it is a label, not a sentence",
+                    )
+                    continue
                 key = lemma_key(item.lemma)
                 sense = sense_key(item.sense_key)
                 if not key or not sense or (key, sense) in seen:

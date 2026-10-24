@@ -15,10 +15,11 @@ from wortling.pipeline.engine import (
     SPAN_MAX_CHARS,
     SPAN_MAX_WORDS,
     Pipeline,
+    best_span,
     cuts_mid_word,
+    looks_like_a_sentence,
     preserve_short_source,
     segment_candidates,
-    shortest_span,
     validate_normalized,
 )
 from wortling.pipeline.schemas import Extracted, GeneratedCards, Normalized
@@ -86,14 +87,14 @@ def test_mid_word_span_is_rejected():
 def test_word_from_a_middle_clause_gets_that_clause():
     spans = segment_candidates(RUN_ON)
 
-    index = shortest_span(spans, "Sendungsverfolgung")
+    index = best_span(spans, "Sendungsverfolgung")
 
     assert index is not None
     assert spans[index] != RUN_ON
     assert "Sendungsverfolgung" in spans[index]
     assert len(spans[index]) < len(RUN_ON)
     # The first clause's word still resolves to the first clause.
-    assert "Rechnung" in spans[shortest_span(spans, "Rechnung")]
+    assert "Rechnung" in spans[best_span(spans, "Rechnung")]
 
 
 def test_a_normal_sentence_is_left_whole():
@@ -251,3 +252,169 @@ def test_pipeline_hands_extraction_clauses_not_the_paragraph(settings):
     assert stored != RUN_ON
     assert "Sendungsverfolgung" in stored
     assert len(stored) <= SPAN_MAX_CHARS
+
+
+def test_a_sentence_under_the_ceiling_is_never_amputated():
+    """Length is a ceiling, not a target: context outranks brevity."""
+    sentence = (
+        "Die Stadtbibliothek schließt am Freitag früher, weil die Räume für eine "
+        "Lesung hergerichtet werden."
+    )
+    assert len(sentence) < SPAN_MAX_CHARS
+    assert len(sentence.split()) <= SPAN_MAX_WORDS
+    assert segment_candidates(sentence) == [sentence]
+
+
+def test_a_label_is_not_a_sentence():
+    for label in [
+        "App-Fehler",
+        "Niedriger Batteriestand",
+        "Uneingeschränkter Zugriff",
+        "Fotoabzüge 10 x 15 cm Express-Aholung (Papier: Glänzend)",
+    ]:
+        assert not looks_like_a_sentence(label), label
+    for sentence in [
+        "Ich möchte ein Auto umschreiben",
+        "Wähle diese Option für Kauf auf Rechnung.",
+        "Der Unterricht fällt morgen aus.",
+    ]:
+        assert looks_like_a_sentence(sentence), sentence
+
+
+def test_a_thin_span_prefers_the_sentence_that_holds_it():
+    spans = [
+        "Auto umschreiben",
+        "Ich möchte ein Auto umschreiben, weil sich der Halter ändert.",
+    ]
+    assert best_span(spans, "umschreiben") == 1
+
+
+LABELS = ["App-Fehler", "Niedriger Batteriestand", "Uneingeschränkter Zugriff"]
+
+
+class LabelClient:
+    """Normalize keeps the app-screen labels and extraction mines a word from one."""
+
+    def call(self, stage, schema, data, *args, **kwargs):
+        if stage == "normalize":
+            return schema.model_validate(
+                {
+                    "mostly_german": True,
+                    "reason": "Scooter app labels",
+                    "source_text": "\n".join(LABELS),
+                    "sentences": LABELS,
+                }
+            )
+        if stage == "extract":
+            return schema.model_validate(
+                {
+                    "candidates": [
+                        {
+                            "sentence_id": 1,
+                            "lemma": "der Batteriestand",
+                            "surface": "Batteriestand",
+                            "pos": "noun",
+                            "sense_gloss": "battery level",
+                            "sense_key": "battery-level",
+                            "is_phrase": False,
+                            "cefr_estimate": "B1",
+                            "domain": "transit",
+                        }
+                    ]
+                }
+            )
+        raise AssertionError(f"a label capture must not reach {stage}")
+
+
+def test_a_label_only_capture_yields_no_cards_and_says_why(settings):
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/v1/captures",
+            headers={"Authorization": "Bearer " + "a" * 48},
+            json={"text": "\n".join(LABELS), "client_ts": now()},
+        )
+        assert response.status_code == 202
+        capture_id = response.json()["id"]
+
+    db = Database(settings.data_dir)
+    Pipeline(settings, db, LabelClient()).process(capture_id)
+
+    with db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 0
+        reasons = [
+            row[0]
+            for row in conn.execute(
+                "SELECT reason FROM decisions WHERE outcome='skipped' ORDER BY id"
+            )
+        ]
+    assert reasons and "no finite verb" in reasons[0]
+
+
+class FormSentenceClient:
+    """The judge rejects a bare form template as too thin."""
+
+    def call(self, stage, schema, data, *args, **kwargs):
+        if stage == "normalize":
+            return schema.model_validate(
+                {
+                    "mostly_german": True,
+                    "reason": "Form sentence",
+                    "source_text": "Ich möchte ein Auto umschreiben.",
+                    "sentences": ["Ich möchte ein Auto umschreiben."],
+                }
+            )
+        if stage == "extract":
+            return schema.model_validate(
+                {
+                    "candidates": [
+                        {
+                            "sentence_id": 0,
+                            "lemma": "umschreiben",
+                            "surface": "umschreiben",
+                            "pos": "verb",
+                            "sense_gloss": "to transfer ownership",
+                            "sense_key": "transfer-ownership",
+                            "is_phrase": False,
+                            "cefr_estimate": "B1",
+                            "domain": "administration",
+                        }
+                    ]
+                }
+            )
+        if stage == "judge":
+            return schema.model_validate(
+                {
+                    "judgments": [
+                        {
+                            "item_id": item["item_id"],
+                            "keep": False,
+                            "reason": "bare form template, no context for the sense",
+                        }
+                        for item in data["items"]
+                    ]
+                }
+            )
+        raise AssertionError(f"a dropped item must not reach {stage}")
+
+
+def test_a_thin_form_sentence_is_rejected_as_banal_not_as_long(settings):
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/v1/captures",
+            headers={"Authorization": "Bearer " + "a" * 48},
+            json={"text": "Ich möchte ein Auto umschreiben.", "client_ts": now()},
+        )
+        assert response.status_code == 202
+        capture_id = response.json()["id"]
+
+    db = Database(settings.data_dir)
+    Pipeline(settings, db, FormSentenceClient()).process(capture_id)
+
+    with db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 0
+        outcome, reason = conn.execute(
+            "SELECT outcome, reason FROM decisions WHERE stage='judge'"
+        ).fetchone()
+    assert outcome == "dropped"
+    assert "template" in reason, reason
