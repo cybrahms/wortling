@@ -86,7 +86,7 @@ def test_word_from_a_middle_clause_gets_that_clause():
 
 
 def test_a_normal_sentence_is_left_whole():
-    """"Do not shorten a sentence by rewriting it" still holds below the cap."""
+    """ "Do not shorten a sentence by rewriting it" still holds below the cap."""
     sentence = "Bitte bringen Sie Ihre Unterlagen mit."
 
     assert segment_candidates(sentence) == [sentence]
