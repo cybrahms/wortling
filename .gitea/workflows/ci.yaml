@@ -8,6 +8,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check the base branch contains main
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
+          if [ -z "${BASE_REF}" ] || [ -z "${BASE_SHA}" ]; then
+            echo "::error::the pull request's base ref and sha were not readable from the event, so this run cannot say what it is testing"
+            exit 1
+          fi
+          git fetch --no-tags --prune origin \
+            "+refs/heads/main:refs/remotes/gitea/main" \
+            "+refs/heads/${BASE_REF}:refs/remotes/gitea/base"
+          main_sha="$(git rev-parse refs/remotes/gitea/main)"
+          if git merge-base --is-ancestor "${main_sha}" "${BASE_SHA}"; then
+            echo "base ${BASE_REF} at ${BASE_SHA} already contains main at ${main_sha:0:8}"
+            exit 0
+          fi
+          echo "::error::base branch ${BASE_REF} at ${BASE_SHA:0:8} does not contain main at ${main_sha:0:8}, so this run does not describe the tree that will merge"
+          echo "main has these commits that ${BASE_REF} does not:"
+          git log --oneline "${main_sha}" "^${BASE_SHA}"
+          echo "fix: git fetch origin && git merge origin/main inside ${BASE_REF}, then push this branch again"
+          exit 1
       - name: Install dependencies (uv sync, playwright firefox)
         run: |
           export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
