@@ -3,6 +3,10 @@
 Capture German text, web pages, and photos, then turn selected encounters into Anki cards.
 Each learner has a separate queue, known-word index, and collection.
 
+The [card style guide](docs/card-style.md) defines context selection, short-label
+cards, answer layout and the always-visible full translation. Useful vocabulary
+must not be discarded merely because it came from a label or interface.
+
 The GitHub repository is a read-only mirror. Changes are made in the primary
 Gitea repository and published automatically.
 

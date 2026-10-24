@@ -30,7 +30,13 @@ def validate_cloze(text: str, sentence: str) -> None:
         raise ValueError("Generated cloze rewrote the original sentence")
 
 
-def build_cloze(sentence: str, surface: str, gloss: str, context_words: int = 25) -> str:
+def build_cloze(sentence: str, surface: str, gloss: str) -> str:
+    """Cloze the selected authentic context without cropping its grammar.
+
+    Context selection belongs to normalization, where complete meanings can be
+    considered. A word window here loses governing verbs and invalidates the
+    full-context translation. Labels remain valid contexts with English hints.
+    """
     spans = []
     position = 0
     for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface):
@@ -40,23 +46,12 @@ def build_cloze(sentence: str, surface: str, gloss: str, context_words: int = 25
             raise ValueError("Cloze target is absent from the original sentence")
         spans.append((found, found + len(part)))
         position = found + len(part)
-    words = list(re.finditer(r"\S+", sentence))
-    start, end = 0, len(sentence)
-    if len(words) > context_words:
-        first = next(i for i, word in enumerate(words) if word.end() > spans[0][0])
-        last = max(i for i, word in enumerate(words) if word.start() < spans[-1][1])
-        span_length = last - first + 1
-        width = max(context_words, span_length)
-        left = max(0, first - max(0, (width - span_length) // 2))
-        right = min(len(words), left + width)
-        left = max(0, right - width)
-        start, end = words[left].start(), words[right - 1].end()
     hint = gloss.replace("::", ":").replace("{{", "").replace("}}", "")
-    result = sentence[start:end]
+    result = sentence
     for index, (left, right) in reversed(list(enumerate(spans))):
         target = sentence[left:right]
         cloze = "{{c1::" + target + ("::" + hint if index == 0 else "") + "}}"
-        result = result[: left - start] + cloze + result[right - start :]
+        result = result[:left] + cloze + result[right:]
     validate_cloze(result, sentence)
     return result
 
@@ -126,6 +121,13 @@ def validate_generated(generated: GeneratedCards, items: list[dict]) -> None:
             raise ValueError("Verb forms need Präteritum, Partizip II and haben/sein auxiliary")
         if lemma_key(card.lemma) != item["lemma_key"]:
             raise ValueError("Generated lemma must match the extracted dictionary lemma")
+
+
+def supporting_forms(forms: str, pos: str) -> str:
+    """Noun plurals are already required in Lemma; don't repeat them below it."""
+    if pos == "noun" or forms.strip() in {"", "—", "-", "Adjektiv", "Adverb"}:
+        return ""
+    return forms.strip()
 
 
 class Pipeline:
@@ -529,7 +531,7 @@ class Pipeline:
                         "Key": item["lemma_key"] + ":" + item["sense_key"],
                         "Text": html.escape(card.text),
                         "Lemma": html.escape(card.lemma),
-                        "Forms": html.escape(card.forms),
+                        "Forms": html.escape(supporting_forms(card.forms, item["pos"])),
                         "Gloss": html.escape(card.gloss),
                         "SentenceEN": html.escape(card.sentence_en),
                         "CEFR": item["cefr_estimate"],
