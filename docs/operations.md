@@ -122,6 +122,15 @@ Full-sync-required aborts; there is no full-upload recovery path. Investigate th
 schema change instead of forcing an upload. Reprocessing retains immutable raw
 captures and updates only owned fields. See [the safety contract](safety.md).
 
+The card template and CSS belong to this code, not to the collection. Every write
+backs the collection up and then rewrites the `DE Mined v1` template and stylesheet
+in place when they differ from `QFMT`, `AFMT` and `CSS` in `src/wortling/anki/writer.py`,
+so a styling change reaches existing notes on the next write or sync without a
+reprocess and without touching scheduling. Fields, the note type name and the
+template name are never changed; a collection whose field list differs raises for a
+human instead. Manual template edits in Anki are therefore overwritten, and the way
+to keep a styling change is to make it in that module.
+
 ## Backup and deployment
 
 ```sh
