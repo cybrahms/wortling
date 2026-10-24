@@ -89,7 +89,7 @@ class LLMSettings(StrictModel):
     )
     prompt_versions: dict[str, str] = Field(
         default_factory=lambda: {
-            stage: ({"normalize": "v4", "extract": "v5", "judge": "v2", "generate": "v2"}[stage])
+            stage: ({"normalize": "v5", "extract": "v5", "judge": "v2", "generate": "v2"}[stage])
             for stage in ("normalize", "extract", "judge", "generate")
         }
     )

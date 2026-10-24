@@ -30,8 +30,12 @@ uv run pytest -q
 
 ## Deployment
 
-Create an ignored `.env` and `config.yaml`, then run `docker compose up --build -d`.
-The API and worker share a persistent data volume. Configure HTTPS using your own
+Create an ignored `.env` and `config.yaml`, then run `docker-compose up --build -d`.
+The API and worker share a persistent data volume.
+
+On macOS the `docker compose` plugin is often not installed while the v1 binary is
+(`/opt/homebrew/bin/docker-compose`, which has no `compose` subcommand), so the
+hyphenated form is the one that works. Both are the same Compose file. Configure HTTPS using your own
 hostname and certificate; `deploy/Caddyfile.tailnet` is an environment-based example.
 Keep the service behind a private network unless you have reviewed its exposure.
 The example hostname `wortling.example.invalid` must be replaced for deployment.
@@ -39,7 +43,7 @@ The example hostname `wortling.example.invalid` must be replaced for deployment.
 Create a personal browser setup link using your actual HTTPS origin:
 
 ```sh
-docker compose exec -T worker wortling setup-link --user learner --base-url https://YOUR_HOST
+docker-compose exec -T worker wortling setup-link --user learner --base-url https://YOUR_HOST
 ```
 
 Links expire after 24 hours and work once. Share each link only with its learner.

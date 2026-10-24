@@ -78,28 +78,181 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
             position = found + len(segment)
 
 
+# A card quotes one span. Long enough to read on a phone, short enough that the
+# card shows the clause the word came from instead of a paragraph.
+SPAN_MAX_CHARS = 100
+SPAN_MAX_WORDS = 15
+
+# Sentence punctuation first; a dash or colon separates two thoughts as surely as
+# a full stop does. The clause pattern splits *before* a coordinator or
+# subordinator, so the candidate that follows still reads as a phrase ("und die
+# Sendungsverfolgung ...") rather than a clause with the join cut off the end.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…;:–—])\s+")
+_CLAUSE_SPLIT = re.compile(
+    r"(?<=\s)(?=(?:und|oder|aber|denn|sondern|weil|dass|daß|wenn|obwohl|damit|während|"
+    r"bevor|nachdem|sobald|sofern|sowie|dennoch|trotzdem|deshalb|deswegen)\b)",
+    re.IGNORECASE,
+)
+_WORD = re.compile(r"\w", re.UNICODE)
+_WORD_TOKEN = re.compile(r"[\wäöüÄÖÜß]+")
+
+# Words that must not end a candidate: a span that stops after "zur" or "und"
+# teaches a phrase that does not exist. Closed-class only -- a span ending in
+# "nicht" or "ist" reads fine and is left alone.
+_TRAILING_FUNCTION = frozenset(
+    """der die das den dem des ein eine einen einem einer eines
+    zu zur zum auf in im ins an am ans mit für von vom bei beim nach aus über
+    unter vor seit durch gegen ohne um bis als wie und oder aber denn sondern
+    weil dass wenn obwohl damit während bevor nachdem sobald sofern
+    er sie es ich du wir ihr man sich""".split()
+)
+
+
+def _split_at(text: str, pattern: re.Pattern[str]) -> list[str]:
+    cuts = [0] + [match.end() for match in pattern.finditer(text)] + [len(text)]
+    return [text[left:right] for left, right in zip(cuts, cuts[1:]) if text[left:right].strip()]
+
+
+def _fits(text: str, max_chars: int, max_words: int) -> bool:
+    return len(text) <= max_chars and len(text.split()) <= max_words
+
+
+def _cut_at_word_boundaries(text: str, max_chars: int, max_words: int) -> list[str]:
+    """Fill the cap greedily, cutting only between words. Last resort for a clause.
+
+    A greedy fill that stops exactly at the cap can end on a preposition or an
+    article ("... steht die Sendungsverfolgung nicht zur" / "Verfügung."), which
+    is a phrase no one can learn from. So the end is walked back over
+    closed-class words before the cut is taken, and the remainder starts with
+    them instead.
+    """
+    words = list(re.finditer(r"\S+", text))
+    pieces: list[str] = []
+    start = 0
+    while start < len(words):
+        index = start + 1
+        while index < len(words) and _fits(
+            text[words[start].start() : words[index].end()], max_chars, max_words
+        ):
+            index += 1
+        end = index
+        while (
+            end - start > 2
+            and words[end - 1].group(0).strip(".,;:!?").lower() in _TRAILING_FUNCTION
+        ):
+            end -= 1
+        if end == start + 1:
+            end = index  # keep the greedy cut rather than emit one word at a time
+        pieces.append(text[words[start].start() : words[end - 1].end()])
+        start = end
+    return pieces
+
+
+def segment_candidates(
+    text: str, max_chars: int = SPAN_MAX_CHARS, max_words: int = SPAN_MAX_WORDS
+) -> list[str]:
+    """Cut one verbatim span into candidates short enough to quote on a card.
+
+    Three turns of the same screw, applied only when the previous one left an
+    oversized piece: sentence punctuation, then clause boundaries, then a cut at
+    the cap between two words. Every piece is a contiguous, word-bounded slice of
+    `text`, so nothing is rewritten, repaired or reordered -- a token the source
+    truncated stays truncated, and is never stitched back into a word.
+    """
+    pieces: list[str] = []
+    for sentence in _split_at(text, _SENTENCE_SPLIT):
+        if _fits(sentence, max_chars, max_words):
+            pieces.append(sentence)
+            continue
+        for clause in _split_at(sentence, _CLAUSE_SPLIT):
+            if _fits(clause, max_chars, max_words):
+                pieces.append(clause)
+            else:
+                pieces.extend(_cut_at_word_boundaries(clause, max_chars, max_words))
+    return [piece.strip() for piece in pieces if piece.strip()]
+
+
+def cuts_mid_word(source: str, span: str) -> bool:
+    """True when every occurrence of `span` in `source` begins or ends inside a word.
+
+    `span` must already be known to be a verbatim substring. This is the check
+    that stops 'Sendu' from being quoted as German when the source says
+    'Sendung': a span sliced by character offset looks fine and is the reason
+    the prompt alone is not trusted.
+    """
+    start = 0
+    while True:
+        index = source.find(span, start)
+        if index < 0:
+            return True
+        end = index + len(span)
+        left_ok = index == 0 or not _WORD.match(source[index - 1])
+        right_ok = end == len(source) or not _WORD.match(source[end])
+        if left_ok and right_ok:
+            return False
+        start = index + 1
+
+
+def shortest_span(sentences: list[str], surface: str) -> int | None:
+    """Index of the shortest candidate that contains the whole surface, or None.
+
+    Extraction names a sentence_id, and a model that was given both a clause and
+    the paragraph containing it will sometimes pick the paragraph. Rebinding to
+    the shortest candidate that still holds the surface makes 'the card quotes
+    the clause the word came from' a property of the code rather than a hope.
+    """
+    parts = [part.strip() for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface) if part.strip()]
+    best: int | None = None
+    for index, sentence in enumerate(sentences):
+        position = 0
+        for part in parts:
+            found = sentence.find(part, position)
+            if found < 0:
+                break
+            position = found + len(part)
+        else:
+            if best is None or len(sentence) < len(sentences[best]):
+                best = index
+    return best
+
+
 def validate_normalized(value: Normalized, source_text: str | None, image: bool) -> None:
     if not image and value.source_text not in {"", source_text}:
         raise ValueError("Normalize must not rewrite supplied source text")
     source = (
         ((source_text + "\n") if source_text else "") + value.source_text if image else source_text
     )
-    if any(sentence not in (source or "") for sentence in value.sentences):
-        raise ValueError("Normalize must select verbatim sentences from the source")
+    for sentence in value.sentences:
+        if sentence not in (source or ""):
+            raise ValueError("Normalize must select verbatim sentences from the source")
+        if cuts_mid_word(source or "", sentence):
+            raise ValueError(
+                "Normalize must not cut mid-word: "
+                f"{sentence[:60]!r} starts or ends inside a word of the source"
+            )
 
 
 def preserve_short_source(value: Normalized) -> None:
     """Short captures are learning material in full, including menu labels.
 
     Retain complete model-selected sentences (including split verbs), and append
-    any omitted source lines. Long articles retain their bounded selection.
+    any source line that contributes a word no selected sentence covers. Long
+    articles retain their bounded selection.
+
+    Coverage is by word rather than by whole line on purpose: a segmented
+    run-on is no longer equal to its source line, and an equality test would
+    append the paragraph straight back and undo the segmentation.
     """
     lines = [line.strip() for line in value.source_text.splitlines() if line.strip()]
     if len(lines) > 30 or len(value.source_text.split()) > 1000:
         return
+    covered = {token.lower() for sentence in value.sentences for token in _WORD_TOKEN.findall(sentence)}
     for line in lines:
-        if not any(line in sentence for sentence in value.sentences):
-            value.sentences.append(line)
+        tokens = {token.lower() for token in _WORD_TOKEN.findall(line)}
+        if tokens and tokens <= covered:
+            continue
+        value.sentences.append(line)
+        covered |= tokens
 
 
 def validate_judgments(value: Judgments, candidates: list[dict]) -> None:
@@ -299,6 +452,17 @@ class Pipeline:
         if any(sentence not in normalized.source_text for sentence in normalized.sentences):
             raise ValueError("Normalize emitted a sentence absent from the source")
         preserve_short_source(normalized)
+        # Cut what the model kept into card-sized candidates before anything
+        # refers to a sentence_id, so extraction, the stored run and the card all
+        # see the same spans. Duplicates are dropped: a retained line can equal a
+        # candidate that a neighbouring line already produced.
+        normalized.sentences = list(
+            dict.fromkeys(
+                piece
+                for sentence in normalized.sentences
+                for piece in segment_candidates(sentence)
+            )
+        )
         with self.db.connect() as conn:
             conn.execute(
                 "UPDATE processing_runs SET normalized_json=? WHERE id=?",
@@ -361,6 +525,9 @@ class Pipeline:
             for item in extracted.candidates:
                 if item.sentence_id >= len(normalized.sentences):
                     raise ValueError("Extract referenced a missing sentence")
+                best = shortest_span(normalized.sentences, item.surface)
+                if best is not None:
+                    item.sentence_id = best
                 sentence = normalized.sentences[item.sentence_id]
                 # Split separable surfaces may contain an ellipsis, but each part must be verbatim.
                 segments = [part.strip() for part in re.split(r"\s*(?:…|\.\.\.)\s*", item.surface)]
