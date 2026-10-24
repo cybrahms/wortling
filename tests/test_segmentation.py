@@ -277,6 +277,12 @@ def test_a_label_is_not_a_sentence():
         "Ich möchte ein Auto umschreiben",
         "Wähle diese Option für Kauf auf Rechnung.",
         "Der Unterricht fällt morgen aus.",
+        # Short sentences and imperatives, whose verb the list does not carry:
+        # a gate that calls these labels drops real vocabulary.
+        "Die Sitzung beginnt.",
+        "Er schreibt.",
+        "Unterschreiben Sie hier.",
+        "Bitte einsteigen.",
     ]:
         assert looks_like_a_sentence(sentence), sentence
 

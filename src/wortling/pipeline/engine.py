@@ -165,7 +165,8 @@ _TRAILING_FUNCTION = frozenset(
     zu zur zum auf in im ins an am ans mit für von vom bei beim nach aus über
     unter vor seit durch gegen ohne um bis als wie und oder aber denn sondern
     weil dass wenn obwohl damit während bevor nachdem sobald sofern
-    er sie es ich du wir ihr man sich""".split()
+    er sie es ich du wir ihr man sich
+    bitte gern gerne nicht auch noch nur schon mal doch so dann da hier dort""".split()
 )
 
 
@@ -325,24 +326,27 @@ def looks_like_a_sentence(text: str) -> bool:
     A label is capture text, not vocabulary in use: "App-Fehler", "Niedriger
     Batteriestand" and "Fotoabzuege 10 x 15 cm Express-Abholung (Papier:
     Glaenzend)" have no verb and no subject, so a card built from one is an
-    orphan word. The test is a finite verb where the list knows one, and
-    otherwise the lowercase words a German clause is made of -- articles,
-    pronouns, prepositions, adverbs. Title case plus units is a label. Erring
-    towards "this is a sentence" is deliberate: the judge rejects banality, and
-    a missed label costs one card, while a false rejection loses real vocabulary.
+    orphan word. A span qualifies when it carries a finite form the list knows,
+    or -- because no list holds every strong verb and imperative -- when it has a
+    closed-class word ("Die Sitzung beginnt.", "Er schreibt.", "Unterschreiben Sie
+    hier.", "Bitte einsteigen."). Two content words in title case ("Auto
+    umschreiben") and a unit list are not a sentence. Erring towards "this is a
+    sentence" is deliberate: the judge rejects banality, and a false rejection
+    would lose real vocabulary.
     """
     tokens = [re.sub(r"^\W+|\W+$", "", token) for token in text.split()]
     tokens = [token for token in tokens if len(token) > 1]
     if len(tokens) < 2:
         return False
-    fold = str.casefold
     known = {
-        fold(token).replace("ü", "ue").replace("ö", "oe").replace("ä", "ae").replace("ß", "ss")
+        token.casefold().replace("ü", "ue").replace("ö", "oe").replace("ä", "ae").replace("ß", "ss")
         for token in tokens
     }
     if known & FINITE_FORMS:
         return True
-    return sum(1 for token in tokens[1:] if token[:1].islower()) >= 2
+    if not any(token.casefold() in _TRAILING_FUNCTION for token in tokens):
+        return False
+    return any(token[:1].islower() for token in tokens)
 
 
 def best_span(sentences: list[str], surface: str) -> int | None:
@@ -711,7 +715,8 @@ class Pipeline:
                         None,
                         "extract",
                         "skipped",
-                        f"Span {sentence!r} has no finite verb, so it is a label, not a sentence",
+                        f"Span {sentence!r} is a label, not a sentence: "
+                        "no finite verb and no clause words",
                     )
                     continue
                 key = lemma_key(item.lemma)
