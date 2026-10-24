@@ -322,7 +322,7 @@ class Pipeline:
         with self.db.connect() as conn:
             existing_senses = [
                 {
-                    "lemma": row["lemma_key"],
+                    "lemma_key": row["lemma_key"],
                     "sense_key": row["sense_key"],
                     "gloss": json.loads(row["fields_json"])["Gloss"],
                 }
@@ -335,7 +335,13 @@ class Pipeline:
         extracted = self.client.call(
             "extract",
             Extracted,
-            {"sentences": normalized.sentences, "existing_senses": existing_senses},
+            {
+                "sentences": [
+                    {"sentence_id": index, "text": sentence}
+                    for index, sentence in enumerate(normalized.sentences)
+                ],
+                "existing_senses": existing_senses,
+            },
             user,
             run_id,
             validator=lambda value: validate_extraction(value, normalized.sentences),
