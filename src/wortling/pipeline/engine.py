@@ -30,6 +30,26 @@ def validate_cloze(text: str, sentence: str) -> None:
         raise ValueError("Generated cloze rewrote the original sentence")
 
 
+def whole_word_at(sentence: str, part: str, position: int) -> int:
+    """Index of `part` at or after `position` that is not inside a longer word.
+
+    A short surface is a substring of a longer word often enough to matter: "ein"
+    in "eine" turned "Bitte reichen Sie eine ... ein" into
+    "{{c1::ein}}e", clozing part of one word and leaving the particle it meant
+    untouched. The style guide says not to leave part of an inflected word
+    unclozed, so the occurrence has to be word-bounded.
+    """
+    start = position
+    while (found := sentence.find(part, start)) >= 0:
+        before = sentence[found - 1] if found else ""
+        end = found + len(part)
+        after = sentence[end] if end < len(sentence) else ""
+        if not (before.isalnum() or after.isalnum()):
+            return found
+        start = found + 1
+    return -1
+
+
 def build_cloze(sentence: str, surface: str, gloss: str) -> str:
     """Cloze the selected authentic context without cropping its grammar.
 
@@ -41,8 +61,13 @@ def build_cloze(sentence: str, surface: str, gloss: str) -> str:
     position = 0
     for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface):
         part = part.strip()
-        found = sentence.find(part, position)
-        if not part or found < 0:
+        found = whole_word_at(sentence, part, position) if part else -1
+        if found < 0:
+            if part and sentence.find(part, position) >= 0:
+                raise ValueError(
+                    f"Cloze target {part!r} only occurs inside a longer word; "
+                    "quote the whole source word instead of part of it"
+                )
             raise ValueError("Cloze target is absent from the original sentence")
         spans.append((found, found + len(part)))
         position = found + len(part)

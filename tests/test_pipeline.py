@@ -454,3 +454,20 @@ def test_extraction_ids_include_skipped_metadata_and_senses_are_lookup_keys(sett
             conn.execute("SELECT status FROM captures WHERE id=?", (second,)).fetchone()[0]
             == "processed"
         )
+
+
+def test_a_short_surface_quotes_the_whole_word_not_part_of_one():
+    """Rule: do not leave part of an inflected word unclozed."""
+    from wortling.pipeline.engine import build_cloze
+
+    text = build_cloze("Bitte reichen Sie eine schriftliche Entschuldigung ein.", "ein", "in")
+    assert "{{c1::ein::in}}" in text
+    assert "{{c1::ein}}e" not in text
+    assert "{{c1::ein::in}}." in text
+
+
+def test_a_surface_that_only_occurs_inside_a_word_is_refused():
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze("Die Anmeldung ist da.", "Anmeld", "registration")
