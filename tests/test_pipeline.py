@@ -471,3 +471,57 @@ def test_a_surface_that_only_occurs_inside_a_word_is_refused():
 
     with pytest.raises(ValueError, match="inside a longer word"):
         build_cloze("Die Anmeldung ist da.", "Anmeld", "registration")
+
+
+@pytest.mark.parametrize(
+    ("sentence", "stem", "whole"),
+    [
+        ("Unser*e Kurier*in liefert das Paket.", "Kurier", "Kurier*in"),
+        ("Die Lehrer:in kommt gleich.", "Lehrer", "Lehrer:in"),
+        ("Die Kolleg_innen kommen.", "Kolleg", "Kolleg_innen"),
+        ("Alle Leser/innen sind eingeladen.", "Leser", "Leser/innen"),
+    ],
+)
+def test_an_inclusive_separator_is_inside_the_word(sentence, stem, whole):
+    """Kurier*in, Lehrer:in, Kolleg_innen: the separator does not end the word."""
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze(sentence, stem, "stem only")
+    assert "{{c1::" + whole + "::" in build_cloze(sentence, whole, "whole form")
+
+
+def test_a_hyphen_is_still_a_word_boundary():
+    """E-Mail and Ein-Euro-Laden are compounds whose parts are closable."""
+    from wortling.pipeline.engine import build_cloze
+
+    assert "{{c1::E-Mail::email}}" in build_cloze("Sie schickt eine E-Mail.", "E-Mail", "email")
+
+
+def test_the_extraction_validator_refuses_a_mid_word_surface_so_the_model_can_fix_it():
+    """The retry runs inside the extract call, where a reason still reaches the model."""
+    from wortling.pipeline.engine import validate_extraction
+    from wortling.pipeline.schemas import Extracted
+
+    extracted = Extracted.model_validate(
+        {
+            "candidates": [
+                {
+                    "sentence_id": 0,
+                    "lemma": "der Kurier",
+                    "surface": "Kurier",
+                    "pos": "noun",
+                    "sense_gloss": "courier",
+                    "sense_key": "courier",
+                    "is_phrase": False,
+                    "cefr_estimate": "A2",
+                    "domain": "transit",
+                }
+            ]
+        }
+    )
+    with pytest.raises(ValueError, match="quote the whole source word"):
+        validate_extraction(extracted, ["Unser*e Kurier*in liefert das Paket."])
+    # Quoting the whole inclusive form is accepted by the same validator.
+    extracted.candidates[0].surface = "Kurier*in"
+    validate_extraction(extracted, ["Unser*e Kurier*in liefert das Paket."])

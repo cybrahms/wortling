@@ -37,6 +37,12 @@
 - id: compound-nebenkosten
   text: Die Nebenkostenabrechnung ist angekommen.
   expected: [Nebenkostenabrechnung]
+  # The recorded response also offered "Nebenkosten" from inside
+  # "Nebenkostenabrechnung". The extraction validator refuses that surface and
+  # the retry carries the reason ("quote the whole source word") to the model;
+  # a replay of the same recorded text cannot repair itself, so this case
+  # asserts the refusal rather than a note.
+  refused: "Invalid structured output after retry for extract"
 - id: compound-elternabend
   text: Der Elternabend findet am Donnerstag statt.
   expected: [Elternabend, stattfinden]
