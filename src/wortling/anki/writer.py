@@ -16,6 +16,7 @@ from wortling.config import Learner, Settings
 from wortling.db import Database, now
 
 NOTE_TYPE = "DE Mined v1"
+TEMPLATE_NAME = "Context"
 FIELDS = [
     "Key",
     "Text",
@@ -29,28 +30,98 @@ FIELDS = [
     "CaptureId",
 ]
 
+# Front is the mined sentence alone; the back is sentence, lemma, supporting detail.
+# The card style guide (rules 11-18) owns this shape: bounded line, left aligned,
+# one accent colour, spacing through block margins instead of <br> chains.
+QFMT = '<div class="card card-front"><div class="sentence">{{cloze:Text}}</div></div>'
+
+AFMT = """<div class="card card-back">
+<div class="sentence">{{cloze:Text}}</div>
+<hr class="divider">
+<div class="lemma">{{Lemma}}</div>
+{{#Forms}}<div class="forms">{{Forms}}</div>{{/Forms}}
+<div class="gloss">{{Gloss}}</div>
+{{#SentenceEN}}<div class="english">{{SentenceEN}}</div>{{/SentenceEN}}
+{{#Source}}<div class="source">{{Source}}</div>{{/Source}}
+{{#Examples}}<div class="examples">{{Examples}}</div>{{/Examples}}
+</div>"""
+
+CSS = """.card {
+  --ink: #1f2328;
+  --muted: #6a737d;
+  --rule: #d0d7de;
+  --accent: #b45309;
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 1.5rem;
+  font-size: 1.25rem;
+  line-height: 1.6;
+  text-align: left;
+  -webkit-text-size-adjust: 100%;
+}
+.nightMode .card,
+.night_mode .card {
+  --ink: #e6edf3;
+  --muted: #9198a1;
+  --rule: #30363d;
+  --accent: #f0b429;
+}
+.card .sentence { margin: 0; }
+.card .divider { margin: 1.25rem 0; border: 0; border-top: 1px solid var(--rule); }
+.card .lemma { font-size: 1.75rem; font-weight: 600; line-height: 1.3; margin: 0 0 0.5rem; }
+.card .forms { font-size: 0.9rem; color: var(--muted); margin: 0 0 1rem; }
+.card .gloss { font-size: 1.15rem; font-weight: 500; margin: 0 0 0.75rem; }
+.card .english,
+.card .examples { font-size: 0.95rem; color: var(--muted); margin: 0 0 0.5rem; }
+.card .source { font-size: 0.8rem; color: var(--muted); margin: 1rem 0 0; }
+.cloze { color: var(--accent); font-weight: 600; }
+@media (max-width: 600px) {
+  .card { font-size: 1.05rem; padding: 0.75rem 1rem 1.25rem; }
+  .card .lemma { font-size: 1.4rem; }
+  .card .gloss { font-size: 1rem; }
+}
+"""
+
+
+def apply_template(collection: Collection, model) -> bool:
+    """Bring an existing note type's template and CSS up to the current definitions."""
+    if len(model["tmpls"]) != 1:
+        raise RuntimeError("DE Mined v1 template count differs; human migration is required")
+    template = model["tmpls"][0]
+    changed = False
+    if template["qfmt"] != QFMT:
+        template["qfmt"] = QFMT
+        changed = True
+    if template["afmt"] != AFMT:
+        template["afmt"] = AFMT
+        changed = True
+    if model["css"] != CSS:
+        model["css"] = CSS
+        changed = True
+    if changed:
+        collection.models.save(model)
+    return changed
+
 
 def ensure_note_type(collection: Collection):
     model = collection.models.by_name(NOTE_TYPE)
     if model:
         if [field["name"] for field in model["flds"]] != FIELDS or model["type"] != 1:
             raise RuntimeError("DE Mined v1 schema differs; human migration is required")
+        if apply_template(collection, model):
+            model = collection.models.by_name(NOTE_TYPE)
         return model
     model = collection.models.new(NOTE_TYPE)
     model["type"] = 1  # Anki's cloze note type, verified against built-in Cloze.
     for name in FIELDS:
         collection.models.add_field(model, collection.models.new_field(name))
-    template = collection.models.new_template("Context")
-    template["qfmt"] = "{{cloze:Text}}"
-    template["afmt"] = (
-        "{{cloze:Text}}<hr><b>{{Lemma}}</b><br>{{Forms}}<br>{{Gloss}}"
-        "<br>{{SentenceEN}}<hr>{{Source}}<br>{{Examples}}"
-    )
+    template = collection.models.new_template(TEMPLATE_NAME)
+    template["qfmt"] = QFMT
+    template["afmt"] = AFMT
     collection.models.add_template(model, template)
-    model["css"] = (
-        ".card { font-family: sans-serif; font-size: 24px; text-align: center; } "
-        ".cloze { font-weight: bold; color: #2277bb; }"
-    )
+    model["css"] = CSS
     collection.models.add(model)
     return collection.models.by_name(NOTE_TYPE)
 

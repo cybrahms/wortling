@@ -14,12 +14,37 @@ from wordfreq import zipf_frequency
 from wortling.anki.reader import effective_status
 from wortling.config import Settings
 from wortling.db import Database, now
-from wortling.lemma import lemma_key, sense_key
+from wortling.lemma import is_function_word, lemma_key, sense_key
 from wortling.llm.client import LLMClient
 from wortling.pipeline.schemas import Extracted, GeneratedCards, Judgments, Normalized
 from wortling.sources import fetch_source
 
 CLOZE = re.compile(r"\{\{c1::(.*?)(?:::(.*?))?\}\}", re.DOTALL)
+
+# A card has to be reviewable in a few seconds; this is the measurable version of
+# that rule and the window build_cloze trims to.
+MAX_CARD_WORDS = 25
+
+
+def on_word_boundary(sentence: str, start: int, end: int) -> bool:
+    """True when the span neither starts nor ends inside a word."""
+    before = sentence[start - 1] if start else ""
+    after = sentence[end] if end < len(sentence) else ""
+    return not (before.isalnum() or after.isalnum())
+
+
+def find_whole_word(sentence: str, part: str, position: int) -> int:
+    """Index of `part` at or after `position`, skipping matches inside a word.
+
+    A surface like `ein` in "reichen Sie eine ... ein" first matches the `ein`
+    inside `eine`; the separable prefix is the later, whole-word occurrence.
+    """
+    start = position
+    while (found := sentence.find(part, start)) >= 0:
+        if on_word_boundary(sentence, found, found + len(part)):
+            return found
+        start = found + 1
+    return -1
 
 
 def validate_cloze(text: str, sentence: str) -> None:
@@ -28,16 +53,25 @@ def validate_cloze(text: str, sentence: str) -> None:
     plain = CLOZE.sub(lambda match: match[1], text)
     if "{{" in plain or "}}" in plain or plain not in sentence:
         raise ValueError("Generated cloze rewrote the original sentence")
+    if len(plain.split()) > MAX_CARD_WORDS:
+        raise ValueError(f"Card exceeds {MAX_CARD_WORDS} words; split the sentence")
 
 
-def build_cloze(sentence: str, surface: str, gloss: str, context_words: int = 25) -> str:
+def build_cloze(sentence: str, surface: str, context_words: int = MAX_CARD_WORDS) -> str:
+    parts = [part.strip() for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface)]
+    parts = [part for part in parts if part]
+    if not parts:
+        raise ValueError("Cloze target is empty")
+    if all(is_function_word(part) for part in parts):
+        raise ValueError(f"Cloze target {surface!r} is grammar scaffolding, not vocabulary")
     spans = []
     position = 0
-    for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface):
-        part = part.strip()
-        found = sentence.find(part, position)
-        if not part or found < 0:
-            raise ValueError("Cloze target is absent from the original sentence")
+    for part in parts:
+        found = find_whole_word(sentence, part, position)
+        if found < 0:
+            if sentence.find(part, position) < 0:
+                raise ValueError("Cloze target is absent from the original sentence")
+            raise ValueError(f"Cloze target {part!r} starts or ends mid-word")
         spans.append((found, found + len(part)))
         position = found + len(part)
     words = list(re.finditer(r"\S+", sentence))
@@ -51,11 +85,12 @@ def build_cloze(sentence: str, surface: str, gloss: str, context_words: int = 25
         right = min(len(words), left + width)
         left = max(0, right - width)
         start, end = words[left].start(), words[right - 1].end()
-    hint = gloss.replace("::", ":").replace("{{", "").replace("}}", "")
     result = sentence[start:end]
-    for index, (left, right) in reversed(list(enumerate(spans))):
+    for left, right in reversed(spans):
         target = sentence[left:right]
-        cloze = "{{c1::" + target + ("::" + hint if index == 0 else "") + "}}"
+        # No cloze hint: Anki prints it on the front in square brackets, and the
+        # style guide's rule 13 keeps the front to the sentence and the blank.
+        cloze = "{{c1::" + target + "}}"
         result = result[: left - start] + cloze + result[right - start :]
     validate_cloze(result, sentence)
     return result
@@ -69,8 +104,13 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
         position = 0
         for segment in re.split(r"\s*(?:…|\.\.\.)\s*", item.surface):
             segment = segment.strip()
-            found = sentence.find(segment, position)
+            found = find_whole_word(sentence, segment, position)
             if not segment or found < 0:
+                if segment and sentence.find(segment, position) >= 0:
+                    raise ValueError(
+                        f"Surface {segment!r} starts or ends mid-word in sentence "
+                        f"{item.sentence_id}. Use a whole word from the source."
+                    )
                 raise ValueError(
                     f"Surface {item.surface!r} is absent from sentence "
                     f"{item.sentence_id}. Use the original spelling and split parts."
@@ -520,7 +560,7 @@ class Pipeline:
                 raise ValueError("Generate must return every kept item ID exactly once")
             for item in kept:
                 card = by_id[item["item_id"]]
-                card.text = build_cloze(item["sentence"], item["surface"], card.gloss)
+                card.text = build_cloze(item["sentence"], item["surface"])
             with self.db.connect() as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 for item in kept:

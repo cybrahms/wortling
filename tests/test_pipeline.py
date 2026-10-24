@@ -217,9 +217,9 @@ def test_cloze_builder_preserves_printed_lines_and_separable_parts():
     from wortling.pipeline.engine import build_cloze
 
     sentence = "bitte bringen Sie zum Elternabend\nIhre schriftliche Einverständniserklärung mit."
-    result = build_cloze(sentence, "bringen … mit", "bring along")
+    result = build_cloze(sentence, "bringen … mit")
     assert result == (
-        "bitte {{c1::bringen::bring along}} Sie zum Elternabend\n"
+        "bitte {{c1::bringen}} Sie zum Elternabend\n"
         "Ihre schriftliche Einverständniserklärung {{c1::mit}}."
     )
     validate_cloze(result, sentence)
@@ -229,11 +229,11 @@ def test_cloze_builder_trims_only_at_original_boundaries():
     from wortling.pipeline.engine import build_cloze
 
     sentence = " ".join([f"Wort{i}" for i in range(60)])
-    text = build_cloze(sentence, "Wort30", "word thirty")
+    text = build_cloze(sentence, "Wort30")
     from wortling.pipeline.engine import CLOZE
 
     assert len(CLOZE.sub(lambda match: match[1], text).split()) == 25
-    assert "{{c1::Wort30::word thirty}}" in text
+    assert "{{c1::Wort30}}" in text
     validate_cloze(text, sentence)
 
 
@@ -424,3 +424,57 @@ def test_extraction_ids_include_skipped_metadata_and_senses_are_lookup_keys(sett
             conn.execute("SELECT status FROM captures WHERE id=?", (second,)).fetchone()[0]
             == "processed"
         )
+
+
+def test_cloze_on_a_function_word_is_rejected():
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="grammar scaffolding"):
+        build_cloze("Die Sitzung beginnt morgen.", "Die")
+    with pytest.raises(ValueError, match="grammar scaffolding"):
+        build_cloze("Sie nimmt an der Sitzung teil.", "an")
+    # A phrase whose head is a content word is still a card: zur Verfügung stehen.
+    text = build_cloze("Es steht zur Verfügung.", "steht … zur Verfügung")
+    assert "{{c1::steht}}" in text
+
+
+def test_cloze_cannot_split_a_word():
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="mid-word"):
+        build_cloze("Die Nebenkostenabrechnung ist angekommen.", "Nebenkosten")
+
+
+def test_split_verb_part_prefers_the_whole_word_occurrence():
+    from wortling.pipeline.engine import build_cloze
+
+    sentence = "Bitte reichen Sie eine schriftliche Entschuldigung ein."
+    text = build_cloze(sentence, "reichen … ein")
+    assert text.endswith("{{c1::ein}}.")
+    assert "{{c1::ein}}e" not in text
+
+
+def test_card_over_the_word_cap_is_rejected():
+    from wortling.pipeline.engine import MAX_CARD_WORDS
+
+    too_long = " ".join(["Wort"] * (MAX_CARD_WORDS + 1)) + "."
+    with pytest.raises(ValueError, match="exceeds"):
+        validate_cloze("{{c1::Wort}} " + too_long.split(" ", 1)[1], too_long)
+
+
+def test_oversized_cloze_span_is_rejected_rather_than_written():
+    from wortling.pipeline.engine import MAX_CARD_WORDS, build_cloze
+
+    phrase = " ".join(["Wort"] * (MAX_CARD_WORDS + 2))
+    with pytest.raises(ValueError, match="exceeds"):
+        build_cloze("Ich " + phrase + " heute.", phrase)
+
+
+def test_cloze_carries_no_front_hint():
+    """Rule 13: the front is the sentence and the blank; Anki prints a hint there."""
+    from wortling.pipeline.engine import CLOZE, build_cloze
+
+    text = build_cloze("Die Sitzung beginnt morgen.", "Sitzung")
+    assert text == "Die {{c1::Sitzung}} beginnt morgen."
+    match = CLOZE.search(text)
+    assert match and match[2] is None

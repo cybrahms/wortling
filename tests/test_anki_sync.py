@@ -299,3 +299,33 @@ def test_independent_mined_deck_preserves_all_existing_scheduling(
         assert after == before
         deck = collection.decks.id("Wortling", create=False)
         assert collection.db.scalar("SELECT COUNT(*) FROM cards WHERE did=?", deck) == 1
+
+
+def test_write_backs_up_the_collection_before_rewriting_the_template(
+    settings, monkeypatch, sync_endpoint, tmp_path
+):
+    from wortling.anki.writer import AFMT, NOTE_TYPE
+
+    db, user = ready(settings, monkeypatch, sync_endpoint)
+    pending(db, user, "Sitzung")
+    assert write_session(settings, db, user)["added"] == 1
+    old_afmt = "{{cloze:Text}}<hr><b>{{Lemma}}</b><br>{{Forms}}"
+    with open_collection(settings.data_dir, user.id) as collection:
+        model = collection.models.by_name(NOTE_TYPE)
+        model["tmpls"][0]["afmt"] = old_afmt
+        collection.models.save(model)
+
+    pending(db, user, "Antrag")
+    assert write_session(settings, db, user)["added"] == 1
+
+    backups = sorted((settings.data_dir / "backups" / "collections" / user.id).glob("*.anki2"))
+    assert backups
+    copy = tmp_path / "before-the-rewrite.anki2"
+    copy.write_bytes(backups[-1].read_bytes())
+    before = Collection(str(copy))
+    try:
+        assert before.models.by_name(NOTE_TYPE)["tmpls"][0]["afmt"] == old_afmt
+    finally:
+        before.close()
+    with open_collection(settings.data_dir, user.id) as collection:
+        assert collection.models.by_name(NOTE_TYPE)["tmpls"][0]["afmt"] == AFMT
