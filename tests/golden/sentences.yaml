@@ -37,11 +37,6 @@
 - id: compound-nebenkosten
   text: Die Nebenkostenabrechnung ist angekommen.
   expected: [Nebenkostenabrechnung]
-  # The recorded response also proposed "Nebenkosten" from inside
-  # "Nebenkostenabrechnung". That blank would split a word, so the pipeline now
-  # refuses the response; the case is kept to prove the refusal.
-  refused: "Invalid structured output after retry for extract"
-
 - id: compound-elternabend
   text: Der Elternabend findet am Donnerstag statt.
   expected: [Elternabend, stattfinden]

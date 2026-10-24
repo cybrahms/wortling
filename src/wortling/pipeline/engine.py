@@ -57,21 +57,45 @@ def validate_cloze(text: str, sentence: str) -> None:
         raise ValueError(f"Card exceeds {MAX_CARD_WORDS} words; split the sentence")
 
 
-def build_cloze(sentence: str, surface: str, context_words: int = MAX_CARD_WORDS) -> str:
-    parts = [part.strip() for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface)]
-    parts = [part for part in parts if part]
+def cloze_parts(surface: str) -> list[str]:
+    """The surface split into the printed parts of a separable verb, if any."""
+    cut = re.split(r"\s*(?:…|\.\.\.)\s*", surface)
+    return [part.strip() for part in cut if part.strip()]
+
+
+def card_rule_violation(sentence: str, surface: str) -> str | None:
+    """Why this cloze target cannot become a card, or None when it can.
+
+    These are the style guide's checkable generation rules (2, 3 and 5). A
+    candidate that breaks one is skipped, not fatal: the rest of the capture is
+    still usable and a retry would only burn another call.
+    """
+    parts = cloze_parts(surface)
     if not parts:
-        raise ValueError("Cloze target is empty")
+        return "Cloze target is empty"
     if all(is_function_word(part) for part in parts):
-        raise ValueError(f"Cloze target {surface!r} is grammar scaffolding, not vocabulary")
-    spans = []
+        return f"Cloze target {surface!r} is a function word, not vocabulary (rule 5)"
+    if len(surface.split()) > MAX_CARD_WORDS:
+        return f"Cloze target is longer than {MAX_CARD_WORDS} words (rule 2)"
     position = 0
     for part in parts:
         found = find_whole_word(sentence, part, position)
         if found < 0:
-            if sentence.find(part, position) < 0:
-                raise ValueError("Cloze target is absent from the original sentence")
-            raise ValueError(f"Cloze target {part!r} starts or ends mid-word")
+            if sentence.find(part, position) >= 0:
+                return f"Cloze target {part!r} starts or ends mid-word (rule 3)"
+            return f"Cloze target {part!r} is absent from the sentence"
+        position = found + len(part)
+    return None
+
+
+def build_cloze(sentence: str, surface: str, context_words: int = MAX_CARD_WORDS) -> str:
+    violation = card_rule_violation(sentence, surface)
+    if violation:
+        raise ValueError(violation)
+    spans = []
+    position = 0
+    for part in cloze_parts(surface):
+        found = find_whole_word(sentence, part, position)
         spans.append((found, found + len(part)))
         position = found + len(part)
     words = list(re.finditer(r"\S+", sentence))
@@ -104,13 +128,8 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
         position = 0
         for segment in re.split(r"\s*(?:…|\.\.\.)\s*", item.surface):
             segment = segment.strip()
-            found = find_whole_word(sentence, segment, position)
+            found = sentence.find(segment, position)
             if not segment or found < 0:
-                if segment and sentence.find(segment, position) >= 0:
-                    raise ValueError(
-                        f"Surface {segment!r} starts or ends mid-word in sentence "
-                        f"{item.sentence_id}. Use a whole word from the source."
-                    )
                 raise ValueError(
                     f"Surface {item.surface!r} is absent from sentence "
                     f"{item.sentence_id}. Use the original spelling and split parts."
@@ -403,13 +422,18 @@ class Pipeline:
                     raise ValueError("Extract referenced a missing sentence")
                 sentence = normalized.sentences[item.sentence_id]
                 # Split separable surfaces may contain an ellipsis, but each part must be verbatim.
-                segments = [part.strip() for part in re.split(r"\s*(?:…|\.\.\.)\s*", item.surface)]
+                segments = cloze_parts(item.surface)
                 position = 0
                 for segment in segments:
                     found = sentence.find(segment, position)
                     if not segment or found < 0:
                         raise ValueError("Extract surface is absent from original sentence")
                     position = found + len(segment)
+                if violation := card_rule_violation(sentence, item.surface):
+                    # A candidate that would blank a function word or part of a word is
+                    # dropped here; the rest of the capture still produces cards.
+                    self.decision(conn, run_id, None, "extract", "skipped", violation)
+                    continue
                 key = lemma_key(item.lemma)
                 sense = sense_key(item.sense_key)
                 if not key or not sense or (key, sense) in seen:

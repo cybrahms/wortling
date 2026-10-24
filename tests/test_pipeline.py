@@ -429,9 +429,9 @@ def test_extraction_ids_include_skipped_metadata_and_senses_are_lookup_keys(sett
 def test_cloze_on_a_function_word_is_rejected():
     from wortling.pipeline.engine import build_cloze
 
-    with pytest.raises(ValueError, match="grammar scaffolding"):
+    with pytest.raises(ValueError, match="function word"):
         build_cloze("Die Sitzung beginnt morgen.", "Die")
-    with pytest.raises(ValueError, match="grammar scaffolding"):
+    with pytest.raises(ValueError, match="function word"):
         build_cloze("Sie nimmt an der Sitzung teil.", "an")
     # A phrase whose head is a content word is still a card: zur Verfügung stehen.
     text = build_cloze("Es steht zur Verfügung.", "steht … zur Verfügung")
@@ -466,8 +466,130 @@ def test_oversized_cloze_span_is_rejected_rather_than_written():
     from wortling.pipeline.engine import MAX_CARD_WORDS, build_cloze
 
     phrase = " ".join(["Wort"] * (MAX_CARD_WORDS + 2))
-    with pytest.raises(ValueError, match="exceeds"):
+    with pytest.raises(ValueError, match="longer than"):
         build_cloze("Ich " + phrase + " heute.", phrase)
+
+
+class RuleBreakingClient(RecordedClient):
+    """Extraction proposes two unusable targets beside one good one."""
+
+    def __init__(self):
+        super().__init__("Die Betreuung endet während der Ferien.")
+
+    def call(self, stage, schema, data, user, run_id, **kwargs):
+        if stage == "generate":
+            self.stages.append(stage)
+            return schema.model_validate(
+                {
+                    "cards": [
+                        {
+                            "item_id": item["item_id"],
+                            "text": "draft text the service replaces",
+                            "lemma": item["lemma"] + (", -en" if item["pos"] == "noun" else ""),
+                            "forms": "",
+                            "gloss": item["sense_gloss"],
+                            "sentence_en": "English sentence",
+                        }
+                        for item in data["items"]
+                    ]
+                }
+            )
+        if stage != "extract":
+            return super().call(stage, schema, data, user, run_id, **kwargs)
+        self.stages.append(stage)
+        return schema.model_validate(
+            {
+                "candidates": [
+                    {
+                        "sentence_id": 0,
+                        "lemma": "die Betreuung",
+                        "surface": "Betreuung",
+                        "pos": "noun",
+                        "sense_gloss": "care",
+                        "sense_key": "care",
+                        "is_phrase": False,
+                        "cefr_estimate": "B2",
+                        "domain": "school",
+                    },
+                    {
+                        "sentence_id": 0,
+                        "lemma": "während",
+                        "surface": "während",
+                        "pos": "adverb",
+                        "sense_gloss": "during",
+                        "sense_key": "during",
+                        "is_phrase": False,
+                        "cefr_estimate": "A2",
+                        "domain": "school",
+                    },
+                    {
+                        "sentence_id": 0,
+                        "lemma": "die Ferien",
+                        "surface": "Ferien",
+                        "pos": "noun",
+                        "sense_gloss": "holidays",
+                        "sense_key": "holidays",
+                        "is_phrase": False,
+                        "cefr_estimate": "A2",
+                        "domain": "school",
+                    },
+                ]
+            }
+        )
+
+
+def test_rule_breaking_candidate_is_skipped_and_the_capture_still_produces_cards(settings):
+    capture_id = capture(settings, "Die Betreuung endet während der Ferien.")
+    Pipeline(settings, Database(settings.data_dir), RuleBreakingClient()).process(capture_id)
+    db = Database(settings.data_dir)
+    with db.connect() as conn:
+        stored = [row[0] for row in conn.execute("SELECT lemma_key FROM items ORDER BY lemma_key")]
+        skipped = [
+            row[0]
+            for row in conn.execute(
+                "SELECT reason FROM decisions WHERE outcome='skipped' ORDER BY id"
+            )
+        ]
+    assert stored == ["betreuung", "ferien"]
+    assert len(skipped) == 1 and "function word" in skipped[0]
+
+
+def test_noun_lemma_without_article_is_rejected_at_extraction_and_generation():
+    from pydantic import ValidationError
+
+    from wortling.pipeline.engine import validate_generated
+    from wortling.pipeline.schemas import Candidate, GeneratedCards
+
+    with pytest.raises(ValidationError, match="dictionary article"):
+        Candidate.model_validate(
+            {
+                "sentence_id": 0,
+                "lemma": "Sitzung",
+                "surface": "Sitzung",
+                "pos": "noun",
+                "sense_gloss": "meeting",
+                "sense_key": "meeting",
+                "is_phrase": False,
+                "cefr_estimate": "B1",
+                "domain": "school",
+            }
+        )
+    generated = GeneratedCards.model_validate(
+        {
+            "cards": [
+                {
+                    "item_id": "1",
+                    "text": "unused draft",
+                    "lemma": "Sitzung, -en",
+                    "forms": "",
+                    "gloss": "meeting",
+                    "sentence_en": "meeting",
+                }
+            ]
+        }
+    )
+    with pytest.raises(ValueError, match="German article"):
+        validate_generated(generated, [{"item_id": "1", "pos": "noun", "lemma_key": "sitzung"}])
 
 
 def test_cloze_carries_no_front_hint():

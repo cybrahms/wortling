@@ -69,14 +69,7 @@ def test_recorded_extraction(case, settings):
     client = LLMClient(
         settings, db, transport=httpx.MockTransport(handler), token_provider=lambda: "test"
     )
-    pipeline = Pipeline(settings, db, client)
-    if refused := case.get("refused"):
-        # The recorded response breaks a card rule, so the pipeline must say so
-        # rather than write a note; the retry then sees the reason.
-        with pytest.raises(ValueError, match=refused):
-            pipeline.process(capture_id)
-        return
-    pipeline.process(capture_id)
+    Pipeline(settings, db, client).process(capture_id)
     with db.connect() as conn:
         stored = {row[0] for row in conn.execute("SELECT lemma_key FROM items")}
     for expected in case["expected"]:

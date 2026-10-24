@@ -33,18 +33,16 @@ FIELDS = [
 # Front is the mined sentence alone; the back is sentence, lemma, supporting detail.
 # The card style guide (rules 11-18) owns this shape: bounded line, left aligned,
 # one accent colour, spacing through block margins instead of <br> chains.
-QFMT = '<div class="card card-front"><div class="sentence">{{cloze:Text}}</div></div>'
+QFMT = '<div class="sentence">{{cloze:Text}}</div>'
 
-AFMT = """<div class="card card-back">
-<div class="sentence">{{cloze:Text}}</div>
+AFMT = """<div class="sentence">{{cloze:Text}}</div>
 <hr class="divider">
 <div class="lemma">{{Lemma}}</div>
 {{#Forms}}<div class="forms">{{Forms}}</div>{{/Forms}}
 <div class="gloss">{{Gloss}}</div>
 {{#SentenceEN}}<div class="english">{{SentenceEN}}</div>{{/SentenceEN}}
 {{#Source}}<div class="source">{{Source}}</div>{{/Source}}
-{{#Examples}}<div class="examples">{{Examples}}</div>{{/Examples}}
-</div>"""
+{{#Examples}}<div class="examples">{{Examples}}</div>{{/Examples}}"""
 
 CSS = """.card {
   --ink: #1f2328;
@@ -86,9 +84,14 @@ CSS = """.card {
 
 
 def apply_template(collection: Collection, model) -> bool:
-    """Bring an existing note type's template and CSS up to the current definitions."""
-    if len(model["tmpls"]) != 1:
-        raise RuntimeError("DE Mined v1 template count differs; human migration is required")
+    """Rewrite an existing note type's template and CSS in place when they differ.
+
+    The fields, the note-type name and the template's name are untouched, because
+    the learner's notes and scheduling are keyed on them. The caller backs the
+    collection up first; write_session always does.
+    """
+    if not model["tmpls"]:
+        raise RuntimeError("DE Mined v1 has no card template; human migration is required")
     template = model["tmpls"][0]
     changed = False
     if template["qfmt"] != QFMT:
@@ -206,6 +209,10 @@ def write_session(settings: Settings, db: Database, user: Learner, *, force: boo
                 )
             auth = login(collection, user, settings.anki_sync_endpoint)
             incremental_sync(collection, auth)
+            if (model := collection.models.by_name(NOTE_TYPE)) is not None:
+                # Template and CSS changes reach an existing collection on its next
+                # write; the backup taken above always predates this rewrite.
+                apply_template(collection, model)
             rebuild_index(db, user, collection)
             owned = owned_notes(collection)
             blocked = False
