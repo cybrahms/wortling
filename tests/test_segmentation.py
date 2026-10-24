@@ -176,16 +176,14 @@ def test_pipeline_hands_extraction_clauses_not_the_paragraph(settings):
                     sentences=[RUN_ON],
                 )
             if stage == "extract":
-                # The payload is the span list; sentence_id is the index. Pick the
-                # longest span carrying the word, the way a model that ignored the
-                # cap would.
+                # The payload is the span list, either bare strings or
+                # {"sentence_id", "text"} rows depending on the branch this test
+                # runs on; sentence_id is the index either way. Pick the longest
+                # span carrying the word, the way a model that ignored the cap would.
+                texts = [row["text"] if isinstance(row, dict) else row for row in data["sentences"]]
                 index = max(
-                    (
-                        number
-                        for number, text in enumerate(data["sentences"])
-                        if "Sendungsverfolgung" in text
-                    ),
-                    key=lambda number: len(data["sentences"][number]),
+                    (number for number, text in enumerate(texts) if "Sendungsverfolgung" in text),
+                    key=lambda number: len(texts[number]),
                 )
                 return Extracted.model_validate(
                     {
@@ -242,7 +240,9 @@ def test_pipeline_hands_extraction_clauses_not_the_paragraph(settings):
     Pipeline(settings, db, RecordingPipelineClient()).process(capture_id)
 
     extract_payload = next(data for stage, data in payloads if stage == "extract")
-    offered = extract_payload["sentences"]
+    offered = [
+        row["text"] if isinstance(row, dict) else row for row in extract_payload["sentences"]
+    ]
     assert RUN_ON not in offered, "the run-on reached extraction intact"
     assert all(len(text) <= SPAN_MAX_CHARS for text in offered)
 
