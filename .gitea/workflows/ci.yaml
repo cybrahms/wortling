@@ -8,11 +8,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Lint and test from the lockfile
+      - name: Install dependencies (uv sync, playwright firefox)
         run: |
           export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
           uv sync --frozen
           uv run playwright install --with-deps firefox
+      - name: Lint (ruff check, ruff format --check)
+        run: |
+          export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
           uv run ruff check .
           uv run ruff format --check .
+      - name: Test (pytest)
+        run: |
+          export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
           uv run pytest -q
