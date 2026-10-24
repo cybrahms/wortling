@@ -225,16 +225,46 @@ def test_cloze_builder_preserves_printed_lines_and_separable_parts():
     validate_cloze(result, sentence)
 
 
-def test_cloze_builder_trims_only_at_original_boundaries():
+def test_cloze_builder_preserves_selected_context_even_over_25_words():
     from wortling.pipeline.engine import build_cloze
 
     sentence = " ".join([f"Wort{i}" for i in range(60)])
     text = build_cloze(sentence, "Wort30", "word thirty")
     from wortling.pipeline.engine import CLOZE
 
-    assert len(CLOZE.sub(lambda match: match[1], text).split()) == 25
+    assert CLOZE.sub(lambda match: match[1], text) == sentence
     assert "{{c1::Wort30::word thirty}}" in text
     validate_cloze(text, sentence)
+
+
+def test_long_request_keeps_modal_and_full_translation_context():
+    from wortling.pipeline.engine import CLOZE, build_cloze
+
+    sentence = (
+        "wir sind gerade im Urlaub und wollten euch fragen, ob ihr bitte die "
+        "Pakete vor unserer Haustür für uns entgegennehmen und kurz bei euch "
+        "aufbewahren könntet."
+    )
+    text = build_cloze(sentence, "entgegennehmen", "receive on our behalf")
+    assert CLOZE.sub(lambda match: match[1], text) == sentence
+    assert text.endswith("aufbewahren könntet.")
+
+
+def test_whole_label_keeps_a_usable_english_question():
+    from wortling.pipeline.engine import build_cloze
+
+    assert build_cloze("Trittbrett", "Trittbrett", "scooter standing platform") == (
+        "{{c1::Trittbrett::scooter standing platform}}"
+    )
+
+
+def test_noun_plural_is_not_repeated_in_supporting_forms():
+    from wortling.pipeline.engine import supporting_forms
+
+    assert supporting_forms("Plural: die Beeinträchtigungen", "noun") == ""
+    assert supporting_forms("Nom. die Bezahlung, Dat. der Bezahlung", "noun") == ""
+    assert supporting_forms("—", "adjective") == ""
+    assert supporting_forms("bat · hat gebeten", "phrase") == "bat · hat gebeten"
 
 
 def test_generate_validator_rejects_missing_noun_plural():

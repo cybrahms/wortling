@@ -15,7 +15,7 @@ from anki.scheduler.v3 import CardAnswer
 
 from wortling.anki.reader import open_collection
 from wortling.anki.sync import FullSyncRequired, bootstrap_download, incremental_sync
-from wortling.anki.writer import backup_collection, write_session
+from wortling.anki.writer import BACK, CARD_CSS, backup_collection, write_session
 from wortling.db import Database, now
 
 
@@ -110,6 +110,12 @@ def test_write_second_client_review_and_field_update(
         nid = phone.db.scalar(
             "SELECT id FROM notes WHERE mid IN (SELECT id FROM notetypes WHERE name='DE Mined v1')"
         )
+        # Simulate a collection that still has the old centered template. Updating
+        # presentation must travel through ordinary sync without a schema change.
+        legacy = phone.models.by_name("DE Mined v1")
+        legacy["css"] = ".card { font-size: 24px; text-align: center; }"
+        legacy["tmpls"][0]["afmt"] = "{{cloze:Text}}<hr>{{Lemma}}<br>{{SentenceEN}}"
+        phone.models.update_dict(legacy)
         card = phone.get_card(phone.find_cards(f"nid:{nid}")[0])
         card.start_timer()
         states = phone._backend.get_scheduling_states(card.id)
@@ -137,6 +143,11 @@ def test_write_second_client_review_and_field_update(
             == schedule
         )
         assert phone.get_note(nid)["Examples"] == "Eine weitere Sitzung."
+        model = phone.models.by_name("DE Mined v1")
+        assert model["css"] == CARD_CSS
+        assert model["tmpls"][0]["afmt"] == BACK
+        answer_html = phone.get_card(phone.find_cards(f"nid:{nid}")[0]).answer()
+        assert '<section class="translation">The meeting starts.</section>' in answer_html
         assert phone.db.scalar("SELECT COUNT(*) FROM cards WHERE nid=?", nid) == 1
     finally:
         phone.close()

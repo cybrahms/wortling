@@ -29,28 +29,65 @@ FIELDS = [
     "CaptureId",
 ]
 
+FRONT = '<main class="context">{{cloze:Text}}</main>'
+BACK = (
+    FRONT + '<section class="answer"><div class="lemma">{{Lemma}}</div>'
+    '<div class="gloss">{{Gloss}}</div>'
+    '{{#Forms}}<div class="forms">{{Forms}}</div>{{/Forms}}</section>'
+    '{{#SentenceEN}}<section class="translation">{{SentenceEN}}</section>{{/SentenceEN}}'
+    '{{#Source}}<footer class="source">{{Source}}</footer>{{/Source}}'
+    '{{#Examples}}<details class="examples"><summary>Other encounters</summary>'
+    "<div>{{Examples}}</div></details>{{/Examples}}"
+)
+CARD_CSS = """
+.card { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  font-size: 20px; line-height: 1.5; text-align: left;
+  color: #20272d; background: #fff; margin: 0; padding: 24px 20px; }
+.context, .answer, .translation, .source, .examples { max-width: 42rem;
+  margin-left: auto; margin-right: auto; overflow-wrap: anywhere; }
+.cloze { font-weight: 600; color: #146c60; }
+.answer { margin-top: 24px; padding-top: 18px; border-top: 1px solid #d9dfe5; }
+.lemma { font-size: 22px; font-weight: 600; }
+.gloss { margin-top: 4px; }
+.forms { margin-top: 8px; font-size: 15px; color: #536171; }
+.translation { margin-top: 20px; font-size: 16px; color: #536171; }
+.source { margin-top: 18px; font-size: 13px; color: #626e7c; }
+.examples { margin-top: 16px; font-size: 15px; color: #536171; }
+.examples summary { cursor: pointer; }
+.examples div { margin-top: 8px; }
+.nightMode.card, .night_mode.card { color: #edf1f5; background: #181a1d; }
+.nightMode .cloze, .night_mode .cloze { color: #7cd9c7; }
+.nightMode .answer, .night_mode .answer { border-color: #41464e; }
+.nightMode .forms, .nightMode .translation, .nightMode .source, .nightMode .examples,
+.night_mode .forms, .night_mode .translation, .night_mode .source, .night_mode .examples
+  { color: #bac4cf; }
+@media (max-width: 600px) { .card { font-size: 19px; padding: 20px 18px; }
+  .lemma { font-size: 21px; } }
+""".strip()
+
 
 def ensure_note_type(collection: Collection):
     model = collection.models.by_name(NOTE_TYPE)
     if model:
         if [field["name"] for field in model["flds"]] != FIELDS or model["type"] != 1:
             raise RuntimeError("DE Mined v1 schema differs; human migration is required")
+        if len(model["tmpls"]) != 1:
+            raise RuntimeError("DE Mined v1 templates differ; human migration is required")
+        template = model["tmpls"][0]
+        if (template["qfmt"], template["afmt"], model["css"]) != (FRONT, BACK, CARD_CSS):
+            template["qfmt"], template["afmt"], model["css"] = FRONT, BACK, CARD_CSS
+            collection.models.update_dict(model)
+            model = collection.models.by_name(NOTE_TYPE)
         return model
     model = collection.models.new(NOTE_TYPE)
     model["type"] = 1  # Anki's cloze note type, verified against built-in Cloze.
     for name in FIELDS:
         collection.models.add_field(model, collection.models.new_field(name))
     template = collection.models.new_template("Context")
-    template["qfmt"] = "{{cloze:Text}}"
-    template["afmt"] = (
-        "{{cloze:Text}}<hr><b>{{Lemma}}</b><br>{{Forms}}<br>{{Gloss}}"
-        "<br>{{SentenceEN}}<hr>{{Source}}<br>{{Examples}}"
-    )
+    template["qfmt"] = FRONT
+    template["afmt"] = BACK
     collection.models.add_template(model, template)
-    model["css"] = (
-        ".card { font-family: sans-serif; font-size: 24px; text-align: center; } "
-        ".cloze { font-weight: bold; color: #2277bb; }"
-    )
+    model["css"] = CARD_CSS
     collection.models.add(model)
     return collection.models.by_name(NOTE_TYPE)
 
