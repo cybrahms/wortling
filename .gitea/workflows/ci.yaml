@@ -43,6 +43,15 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
       - name: Test (pytest)
+        env:
+          # The suite must not inherit the machine's git defaults. 2026-10-26 a
+          # fixture cloned a bare repository whose HEAD was left at whatever
+          # init.defaultBranch said: with main it passed, on this runner with
+          # master the clone checked out nothing and four tests failed. A value
+          # no developer sets makes that divergence fail here, on the push.
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: trunk
         run: |
           export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
           uv run pytest -q
