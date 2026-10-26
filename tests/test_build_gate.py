@@ -34,7 +34,11 @@ def clone(tmp_path):
     git(seed, "add", "tracked.txt")
     git(seed, "commit", "--quiet", "-m", "first")
     bare = tmp_path / "origin.git"
-    git(tmp_path, "init", "--bare", "--quiet", str(bare))
+    # Pin the bare repository's HEAD to main: a clone of a bare repo whose HEAD
+    # points at a branch that does not exist checks out nothing, which made
+    # these tests pass on a machine with init.defaultBranch=main and fail on a
+    # runner with the default master.
+    git(tmp_path, "init", "--bare", "--initial-branch=main", "--quiet", str(bare))
     git(seed, "remote", "add", "origin", str(bare))
     git(seed, "push", "--quiet", "origin", "main")
     work = tmp_path / "work"
