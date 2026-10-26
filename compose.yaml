@@ -1,7 +1,10 @@
 services:
   api:
     image: wortling:trial
-    build: .
+    build:
+      context: .
+      args:
+        BUILD_SHA: "${BUILD_SHA:?run scripts/build.sh, which refuses a commit main does not contain}"
     command: [serve, --host, 0.0.0.0]
     env_file:
       - .env

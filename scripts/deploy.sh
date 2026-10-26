@@ -27,7 +27,9 @@ db=sqlite3.connect(load_settings().data_dir / "wortling.sqlite3")
 assert db.execute("SELECT COUNT(*) FROM jobs WHERE status=?", ("running",)).fetchone()[0] == 0, "Wait for active captures before deploying"
 '
 fi
-docker-compose build --build-arg BUILD_SHA="$head_sha" api
+# The gate fetches main and refuses a commit it does not contain, then builds
+# the image labelled with HEAD. Do not call docker-compose build directly here.
+scripts/build.sh
 docker-compose up -d api worker
 python3 - "$head_sha" <<'PY'
 import json,sys,time,urllib.request

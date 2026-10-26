@@ -142,6 +142,14 @@ It is not required to run Wortling with Compose. Caddy configuration uses
 `WORTLING_HOST`, `WORTLING_TLS_CERT`, and `WORTLING_TLS_KEY`; configure your private
 network/proxy separately. Verify `/v1/health` after deployment.
 
+`scripts/build.sh` is the build entry point and does not need `forge`. It fetches
+`main`, refuses a checkout whose commit `main` does not contain (naming the commits
+that never reached it), and only then builds with `BUILD_SHA` set, so the image
+carries `org.opencontainers.image.revision`. Compose refuses a build with no
+`BUILD_SHA`, which means a bare `docker compose build` cannot produce an image
+whose provenance is unknown. The script also refuses a dirty checkout, since the
+label would otherwise claim a commit the image does not contain.
+
 ## Verification
 
 `uv run pytest -q` uses temporary data and local disposable sync servers, without
