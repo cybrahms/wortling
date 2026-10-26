@@ -82,7 +82,7 @@ else
   exit 1
 fi
 
-BUILD_SHA=$sha "${compose[@]}" build --build-arg BUILD_SHA="$sha" api
+WORTLING_IMAGE=$IMAGE BUILD_SHA=$sha "${compose[@]}" build --build-arg BUILD_SHA="$sha" api
 
 label=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE")
 if [ "$label" != "$sha" ]; then

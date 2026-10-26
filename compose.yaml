@@ -1,6 +1,6 @@
 services:
   api:
-    image: wortling:trial
+    image: ${WORTLING_IMAGE:-wortling:trial}
     build:
       context: .
       args:
@@ -20,7 +20,7 @@ services:
       timeout: 5s
       retries: 3
   worker:
-    image: wortling:trial
+    image: ${WORTLING_IMAGE:-wortling:trial}
     command: [worker]
     stop_grace_period: 30m
     env_file:
