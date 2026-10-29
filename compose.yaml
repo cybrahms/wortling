@@ -1,7 +1,10 @@
 services:
   api:
-    image: wortling:trial
-    build: .
+    image: ${WORTLING_IMAGE:-wortling:trial}
+    build:
+      context: .
+      args:
+        BUILD_SHA: "${BUILD_SHA:?run scripts/build.sh, which refuses a commit main does not contain}"
     command: [serve, --host, 0.0.0.0]
     env_file:
       - .env
@@ -17,7 +20,7 @@ services:
       timeout: 5s
       retries: 3
   worker:
-    image: wortling:trial
+    image: ${WORTLING_IMAGE:-wortling:trial}
     command: [worker]
     stop_grace_period: 30m
     env_file:

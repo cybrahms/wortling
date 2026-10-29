@@ -27,8 +27,14 @@ db=sqlite3.connect(load_settings().data_dir / "wortling.sqlite3")
 assert db.execute("SELECT COUNT(*) FROM jobs WHERE status=?", ("running",)).fetchone()[0] == 0, "Wait for active captures before deploying"
 '
 fi
-docker-compose build --build-arg BUILD_SHA="$head_sha" api
-docker-compose up -d api worker
+# The gate fetches main and refuses a commit it does not contain, then builds
+# the image labelled with HEAD. Do not call docker-compose build directly here.
+scripts/build.sh
+# Compose interpolates the whole model before it does anything, so `up` fails
+# on compose.yaml's required BUILD_SHA even though it would not build. Pass the
+# commit this deploy is of; it is the same one build.sh just labelled the image
+# with, so the value is a fact rather than a formality.
+BUILD_SHA="$head_sha" docker-compose up -d api worker
 python3 - "$head_sha" <<'PY'
 import json,sys,time,urllib.request
 expected=sys.argv[1]
