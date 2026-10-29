@@ -133,3 +133,32 @@ def test_no_remote_is_refused(clone):
 
     assert result.returncode == 1
     assert "no main remote" in result.stderr
+
+
+# The two halves of the deploy path that have to agree. Compose interpolates the
+# whole model before doing anything, so `up` fails on a required build argument
+# even though it would not build: on 2026-10-26 that killed a deploy after the
+# gate and the build had both succeeded, and nothing in this suite noticed.
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_compose_refuses_a_model_without_the_commit():
+    compose = (ROOT / "compose.yaml").read_text()
+    assert "${BUILD_SHA:?" in compose, (
+        "compose.yaml must refuse a model with no BUILD_SHA, or a bare "
+        "`docker compose build` produces an image of unknown provenance"
+    )
+
+
+def test_every_compose_up_carries_the_commit_it_deploys():
+    lines = [
+        line
+        for line in (ROOT / "scripts" / "deploy.sh").read_text().splitlines()
+        if " up " in line and "docker-compose" in line and not line.lstrip().startswith("#")
+    ]
+    assert lines, "deploy.sh no longer starts the services; rewrite this control"
+    for line in lines:
+        assert "BUILD_SHA=" in line, (
+            f"compose interpolates BUILD_SHA for `up` too, so this line fails on "
+            f"any host whose shell does not export it: {line.strip()}"
+        )

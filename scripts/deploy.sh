@@ -30,7 +30,11 @@ fi
 # The gate fetches main and refuses a commit it does not contain, then builds
 # the image labelled with HEAD. Do not call docker-compose build directly here.
 scripts/build.sh
-docker-compose up -d api worker
+# Compose interpolates the whole model before it does anything, so `up` fails
+# on compose.yaml's required BUILD_SHA even though it would not build. Pass the
+# commit this deploy is of; it is the same one build.sh just labelled the image
+# with, so the value is a fact rather than a formality.
+BUILD_SHA="$head_sha" docker-compose up -d api worker
 python3 - "$head_sha" <<'PY'
 import json,sys,time,urllib.request
 expected=sys.argv[1]

@@ -35,10 +35,17 @@ uv run pytest -q
 ## Deployment
 
 Create an ignored `.env` and `config.yaml`, then build with `scripts/build.sh` and
-start the service with `docker compose up -d`. The script fetches `main` and refuses
-a commit `main` does not contain, then builds with the image labelled with that
-commit; Compose refuses a build that has no `BUILD_SHA`, so there is no path to an
-unlabelled or unmerged image. The API and worker share a persistent data volume.
+start the service with
+
+    BUILD_SHA=$(git rev-parse HEAD) docker compose up -d
+
+The script fetches `main` and refuses a commit `main` does not contain, then builds
+with the image labelled with that commit; Compose refuses to load a model with no
+`BUILD_SHA`, so there is no path to an unlabelled or unmerged image. The variable
+is required for `up` as well as `build`, because Compose interpolates the whole
+file before it does anything. `scripts/deploy.sh` passes the commit it is
+deploying for exactly that reason. The API and worker share a persistent data
+volume.
 Configure HTTPS using your own
 hostname and certificate; `deploy/Caddyfile.tailnet` is an environment-based example.
 Keep the service behind a private network unless you have reviewed its exposure.
