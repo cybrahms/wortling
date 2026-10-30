@@ -38,8 +38,29 @@ def validate_cloze(text: str, sentence: str) -> None:
 WORD_JOINERS = frozenset("*:_/")
 
 
-def _inside_word(character: str) -> bool:
-    return character.isalnum() or character in WORD_JOINERS
+def _inside_word(sentence: str, index: int, step: int) -> bool:
+    """True when the character at `index` continues the word the match abuts.
+
+    `step` is -1 for the character before a match and +1 for the one after it.
+
+    A joiner is inside a word only when the far side of it is too: "*" in
+    "Kurier*in" continues the word because "i" follows, while the ":" in
+    "Sie sagte:" does not because a space does. Reading the joiner alone made a
+    colon at a clause end refuse a surface that was already the whole word, and
+    that is the one refusal the model cannot repair - it is told to quote the
+    whole word, and it already did. A run of joiners is read through, so
+    "Kolleg*_innen" holds; the character beyond the run decides.
+    """
+    if not 0 <= index < len(sentence):
+        return False
+    if sentence[index].isalnum():
+        return True
+    if sentence[index] not in WORD_JOINERS:
+        return False
+    beyond = index + step
+    while 0 <= beyond < len(sentence) and sentence[beyond] in WORD_JOINERS:
+        beyond += step
+    return 0 <= beyond < len(sentence) and sentence[beyond].isalnum()
 
 
 def whole_word_at(sentence: str, part: str, position: int) -> int:
@@ -53,10 +74,8 @@ def whole_word_at(sentence: str, part: str, position: int) -> int:
     """
     start = position
     while (found := sentence.find(part, start)) >= 0:
-        before = sentence[found - 1] if found else ""
         end = found + len(part)
-        after = sentence[end] if end < len(sentence) else ""
-        if not (_inside_word(before) or _inside_word(after)):
+        if not (_inside_word(sentence, found - 1, -1) or _inside_word(sentence, end, 1)):
             return found
         start = found + 1
     return -1
