@@ -454,3 +454,139 @@ def test_extraction_ids_include_skipped_metadata_and_senses_are_lookup_keys(sett
             conn.execute("SELECT status FROM captures WHERE id=?", (second,)).fetchone()[0]
             == "processed"
         )
+
+
+def test_a_short_surface_quotes_the_whole_word_not_part_of_one():
+    """Rule: do not leave part of an inflected word unclozed."""
+    from wortling.pipeline.engine import build_cloze
+
+    text = build_cloze("Bitte reichen Sie eine schriftliche Entschuldigung ein.", "ein", "in")
+    assert "{{c1::ein::in}}" in text
+    assert "{{c1::ein}}e" not in text
+    assert "{{c1::ein::in}}." in text
+
+
+def test_a_surface_that_only_occurs_inside_a_word_is_refused():
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze("Die Anmeldung ist da.", "Anmeld", "registration")
+
+
+@pytest.mark.parametrize(
+    ("sentence", "stem", "whole"),
+    [
+        ("Unser*e Kurier*in liefert das Paket.", "Kurier", "Kurier*in"),
+        ("Die Lehrer:in kommt gleich.", "Lehrer", "Lehrer:in"),
+        ("Die Kolleg_innen kommen.", "Kolleg", "Kolleg_innen"),
+        ("Alle Leser/innen sind eingeladen.", "Leser", "Leser/innen"),
+    ],
+)
+def test_an_inclusive_separator_is_inside_the_word(sentence, stem, whole):
+    """Kurier*in, Lehrer:in, Kolleg_innen: the separator does not end the word."""
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze(sentence, stem, "stem only")
+    assert "{{c1::" + whole + "::" in build_cloze(sentence, whole, "whole form")
+
+
+def test_a_hyphen_is_still_a_word_boundary():
+    """E-Mail and Ein-Euro-Laden are compounds whose parts are closable."""
+    from wortling.pipeline.engine import build_cloze
+
+    assert "{{c1::E-Mail::email}}" in build_cloze("Sie schickt eine E-Mail.", "E-Mail", "email")
+
+
+@pytest.mark.parametrize(
+    ("sentence", "surface", "gloss"),
+    [
+        ("Sie sagte: Ich komme morgen.", "sagte", "said"),
+        ("Er antwortete nur: ja.", "nur", "only"),
+        ("Die Regel lautet einfach: üben.", "einfach", "simple"),
+        ("Er kam, sah und siegte: der Rest ist Geschichte.", "siegte", "conquered"),
+    ],
+)
+def test_a_colon_at_a_clause_end_is_a_word_boundary(sentence, surface, gloss):
+    """A joiner only joins when the far side of it does.
+
+    Reading "*:_/" as word-internal on sight refused an ordinary "sagte:" and
+    told the model to quote the whole word it had already quoted, which is the
+    one refusal the retry cannot repair.
+    """
+    from wortling.pipeline.engine import build_cloze
+
+    assert "{{c1::" + surface + "::" in build_cloze(sentence, surface, gloss)
+
+
+def test_the_validator_accepts_a_whole_word_before_a_colon():
+    """The colon case reaches the model as a false reason unless the far side decides."""
+    from wortling.pipeline.engine import validate_extraction
+    from wortling.pipeline.schemas import Extracted
+
+    extracted = Extracted.model_validate(
+        {
+            "candidates": [
+                {
+                    "sentence_id": 0,
+                    "lemma": "sagen",
+                    "surface": "sagte",
+                    "pos": "verb",
+                    "sense_gloss": "said",
+                    "sense_key": "say",
+                    "is_phrase": False,
+                    "cefr_estimate": "A1",
+                    "domain": "speech",
+                }
+            ]
+        }
+    )
+    validate_extraction(extracted, ["Sie sagte: Ich komme morgen."])
+
+
+def test_a_run_of_joiners_is_still_inside_the_word():
+    """Kolleg*_innen: the character beyond the run is what decides."""
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze("Die Kolleg*_innen kommen.", "Kolleg", "colleague")
+    assert "{{c1::Kolleg*_innen::" in build_cloze(
+        "Die Kolleg*_innen kommen.", "Kolleg*_innen", "colleagues"
+    )
+
+
+def test_a_separator_inside_a_longer_word_still_refuses():
+    """und/oder must keep refusing und: leaving /oder out is the failure."""
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze("und/oder beides.", "und", "and")
+
+
+def test_the_extraction_validator_refuses_a_mid_word_surface_so_the_model_can_fix_it():
+    """The retry runs inside the extract call, where a reason still reaches the model."""
+    from wortling.pipeline.engine import validate_extraction
+    from wortling.pipeline.schemas import Extracted
+
+    extracted = Extracted.model_validate(
+        {
+            "candidates": [
+                {
+                    "sentence_id": 0,
+                    "lemma": "der Kurier",
+                    "surface": "Kurier",
+                    "pos": "noun",
+                    "sense_gloss": "courier",
+                    "sense_key": "courier",
+                    "is_phrase": False,
+                    "cefr_estimate": "A2",
+                    "domain": "transit",
+                }
+            ]
+        }
+    )
+    with pytest.raises(ValueError, match="quote the whole source word"):
+        validate_extraction(extracted, ["Unser*e Kurier*in liefert das Paket."])
+    # Quoting the whole inclusive form is accepted by the same validator.
+    extracted.candidates[0].surface = "Kurier*in"
+    validate_extraction(extracted, ["Unser*e Kurier*in liefert das Paket."])

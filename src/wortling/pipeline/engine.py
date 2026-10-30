@@ -30,6 +30,81 @@ def validate_cloze(text: str, sentence: str) -> None:
         raise ValueError("Generated cloze rewrote the original sentence")
 
 
+# German gender-inclusive writing joins a stem to its ending instead of inflecting
+# it: Kurier*in, Lehrer:in, Kolleg_innen, Leser/innen. Those separators are inside
+# the word, so a stem that stops there leaves part of the source word unclozed -
+# the style guide names Kurier*in by name. A hyphen stays a boundary: E-Mail and
+# Ein-Euro-Laden are compounds whose parts are legitimately closable.
+WORD_JOINERS = frozenset("*:_/")
+
+
+def _inside_word(sentence: str, index: int, step: int) -> bool:
+    """True when the character at `index` continues the word the match abuts.
+
+    `step` is -1 for the character before a match and +1 for the one after it.
+
+    A joiner is inside a word only when the far side of it is too: "*" in
+    "Kurier*in" continues the word because "i" follows, while the ":" in
+    "Sie sagte:" does not because a space does. Reading the joiner alone made a
+    colon at a clause end refuse a surface that was already the whole word, and
+    that is the one refusal the model cannot repair - it is told to quote the
+    whole word, and it already did. A run of joiners is read through, so
+    "Kolleg*_innen" holds; the character beyond the run decides.
+    """
+    if not 0 <= index < len(sentence):
+        return False
+    if sentence[index].isalnum():
+        return True
+    if sentence[index] not in WORD_JOINERS:
+        return False
+    beyond = index + step
+    while 0 <= beyond < len(sentence) and sentence[beyond] in WORD_JOINERS:
+        beyond += step
+    return 0 <= beyond < len(sentence) and sentence[beyond].isalnum()
+
+
+def whole_word_at(sentence: str, part: str, position: int) -> int:
+    """Index of `part` at or after `position` that is not inside a longer word.
+
+    A short surface is a substring of a longer word often enough to matter: "ein"
+    in "eine" turned "Bitte reichen Sie eine ... ein" into "{{c1::ein}}e", and
+    "Kurier" in "Kurier*in" would leave the inclusive ending outside the cloze.
+    The style guide says not to leave part of an inflected or inclusive word
+    unclozed, so the occurrence has to be word-bounded.
+    """
+    start = position
+    while (found := sentence.find(part, start)) >= 0:
+        end = found + len(part)
+        if not (_inside_word(sentence, found - 1, -1) or _inside_word(sentence, end, 1)):
+            return found
+        start = found + 1
+    return -1
+
+
+def locate_surface(sentence: str, part: str, position: int) -> tuple[int, str]:
+    """(index, "") when `part` sits there as a whole word, else (-1, reason).
+
+    One place decides both where a surface is and why it is not usable there, so
+    the extraction validator can hand the reason to the model (which retries in
+    the same call) rather than the same sentence being rediscovered later as a
+    failed capture.
+    """
+    found = whole_word_at(sentence, part, position)
+    if found >= 0:
+        return found, ""
+    if whole_word_at(sentence, part, 0) >= 0:
+        return -1, (
+            f"Surface {part!r} already appeared before the previous part; "
+            "quote the parts in the order they are printed"
+        )
+    if sentence.find(part) >= 0:
+        return -1, (
+            f"Surface {part!r} only occurs inside a longer word; "
+            "quote the whole source word instead of part of it"
+        )
+    return -1, f"Surface {part!r} is absent from the sentence"
+
+
 def build_cloze(sentence: str, surface: str, gloss: str) -> str:
     """Cloze the selected authentic context without cropping its grammar.
 
@@ -41,9 +116,12 @@ def build_cloze(sentence: str, surface: str, gloss: str) -> str:
     position = 0
     for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface):
         part = part.strip()
-        found = sentence.find(part, position)
-        if not part or found < 0:
-            raise ValueError("Cloze target is absent from the original sentence")
+        found, problem = locate_surface(sentence, part, position) if part else (-1, "")
+        if found < 0:
+            # Last-ditch assertion: validate_extraction normally catches this while
+            # the model can still be told, so reaching here means the pipeline lost
+            # its own guard.
+            raise ValueError(problem or "Cloze target is absent from the original sentence")
         spans.append((found, found + len(part)))
         position = found + len(part)
     hint = gloss.replace("::", ":").replace("{{", "").replace("}}", "")
@@ -57,6 +135,13 @@ def build_cloze(sentence: str, surface: str, gloss: str) -> str:
 
 
 def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
+    """Refuse a surface the cloze builder could not quote, while the model can fix it.
+
+    This runs as the extract call's validator, so a refusal is retried inside that
+    call with the reason attached and the model gets the chance to quote the whole
+    word. Catching the same defect later, in build_cloze, would cost the whole
+    capture instead of one retry.
+    """
     for item in extracted.candidates:
         if item.sentence_id >= len(sentences):
             raise ValueError("Extract referenced a missing sentence")
@@ -64,11 +149,12 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
         position = 0
         for segment in re.split(r"\s*(?:…|\.\.\.)\s*", item.surface):
             segment = segment.strip()
-            found = sentence.find(segment, position)
-            if not segment or found < 0:
+            found, problem = locate_surface(sentence, segment, position) if segment else (-1, "")
+            if found < 0:
                 raise ValueError(
-                    f"Surface {item.surface!r} is absent from sentence "
-                    f"{item.sentence_id}. Use the original spelling and split parts."
+                    f"{problem or f'Surface {item.surface!r} is absent'} "
+                    f"(sentence {item.sentence_id}). Use the original spelling, whole "
+                    "words, and the split parts in the order they are printed."
                 )
             position = found + len(segment)
 
