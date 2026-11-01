@@ -590,3 +590,214 @@ def test_the_extraction_validator_refuses_a_mid_word_surface_so_the_model_can_fi
     # Quoting the whole inclusive form is accepted by the same validator.
     extracted.candidates[0].surface = "Kurier*in"
     validate_extraction(extracted, ["Unser*e Kurier*in liefert das Paket."])
+
+
+# ------------------------------------------------------------------ fidelity
+#
+# A model reproduces the words of a pasted text and re-keys the characters it
+# finds meaningless: a non-breaking space (the capture this came from), a curly
+# quote, an en dash, a ligature. None of those change what the letter says, so
+# the check compares words and the stored sentence quotes the source. A
+# paraphrase or a re-ordering still fails - both directions are tested, or the
+# tolerance would be an acceptance.
+
+
+@pytest.mark.parametrize(
+    "model_dialect, source_dialect",
+    [
+        ("12.11./13.11.26 wird sie", "12.11./13.11.26\u00a0 wird sie"),
+        ("a b c", "a    b\n c"),
+        ('Er sagte: "ja".', "Er sagte: \u201eja\u201c."),
+        ("Er sagte: 'ja'.", "Er sagte: \u2018ja\u2019."),
+        ("ein fi Schild", "ein \ufb01 Schild"),
+        ("a - b", "a \u2013 b"),
+        ("softhyphen", "soft\u00adhyphen"),
+        ("zerowidth", "zero\u200bwidth"),
+    ],
+)
+def test_fidelity_form_forgives_the_characters_a_model_rekeys(model_dialect, source_dialect):
+    from wortling.pipeline.engine import fidelity_form
+
+    assert fidelity_form(model_dialect) == fidelity_form(source_dialect)
+
+
+def test_a_quoted_sentence_keeps_the_source_characters():
+    from wortling.pipeline.engine import quoted_sentence
+
+    source = "Auch die Gespräche am 12.11./13.11.26\u00a0 wird sie laut Terminplan führen."
+    model = "Auch die Gespräche am 12.11./13.11.26 wird sie laut Terminplan führen."
+
+    assert quoted_sentence(source, model) == (
+        "Auch die Gespräche am 12.11./13.11.26\u00a0 wird sie laut Terminplan führen."
+    )
+    assert "\u00a0" in quoted_sentence(source, model)
+
+
+def test_validate_normalized_accepts_a_folded_but_verbatim_sentence():
+    from wortling.pipeline.engine import validate_normalized
+
+    source = "Er sagte: \u201edas passt\u201c\u00a0 und ging."
+    value = Normalized(
+        mostly_german=True,
+        reason="German",
+        source_text=source.replace("\u201e", '"').replace("\u201c", '"').replace("\u00a0", " "),
+        sentences=['Er sagte: "das passt" und ging.'],
+    )
+    validate_normalized(value, source, False)
+
+
+def test_a_fragment_of_the_source_is_still_a_sentence():
+    from wortling.pipeline.engine import validate_normalized
+
+    source = "Er sagte: \u201edas passt\u201c\u00a0 und ging."
+    value = Normalized(
+        mostly_german=True, reason="German", source_text=source, sentences=["und ging."]
+    )
+    validate_normalized(value, source, False)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Er sagte: das passt und ging.",  # the quote marks are gone: a rewrite
+        "Er sagte, dass es passt und ging.",  # paraphrase
+        "und ging Er sagte: das passt",  # re-ordered
+        "Er sagte: \u201edas passt\u201c und lief.",  # one word swapped
+    ],
+)
+def test_a_paraphrase_or_a_reordering_still_fails(sentence):
+    from wortling.pipeline.engine import validate_normalized
+
+    source = "Er sagte: \u201edas passt\u201c\u00a0 und ging."
+    value = Normalized(
+        mostly_german=True,
+        reason="German",
+        source_text=source,
+        sentences=[sentence],
+    )
+    with pytest.raises(ValueError, match="quote sentences from the source"):
+        validate_normalized(value, source, False)
+
+
+def test_llm_reports_a_validator_rejection_apart_from_a_schema_failure(settings):
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    user = settings.users[0]
+    run_id = str(uuid.uuid4())
+    capture_id = capture(settings, "die Sitzung")
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO processing_runs(id,capture_id,prompt_version,status,started_at) "
+            "VALUES (?,?,?,'running',?)",
+            (run_id, capture_id, "v1", now()),
+        )
+
+    def handler(request):
+        # Valid JSON, refused by a rule about the content rather than the shape.
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "mostly_german": True,
+                                    "reason": "German",
+                                    "source_text": "die Sitzung",
+                                    "sentences": ["the meeting"],
+                                }
+                            )
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 10},
+            },
+        )
+
+    def refuses_the_content(value):
+        raise ValueError("the sentence is not in the source")
+
+    client = LLMClient(
+        settings, db, transport=httpx.MockTransport(handler), token_provider=lambda: "x"
+    )
+    with pytest.raises(ValueError, match="returned valid JSON that failed its validator"):
+        client.call(
+            "normalize",
+            Normalized,
+            {"text": "die Sitzung"},
+            user,
+            run_id,
+            validator=refuses_the_content,
+        )
+    with db.connect() as conn:
+        assert [row[0] for row in conn.execute("SELECT outcome FROM llm_calls ORDER BY id")] == [
+            "validator_rejected",
+            "validator_rejected",
+        ]
+
+
+def test_llm_still_reports_a_schema_failure_as_a_schema_failure(settings):
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    user = settings.users[0]
+    run_id = str(uuid.uuid4())
+    capture_id = capture(settings, "die Sitzung")
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO processing_runs(id,capture_id,prompt_version,status,started_at) "
+            "VALUES (?,?,?,'running',?)",
+            (run_id, capture_id, "v1", now()),
+        )
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "not json at all"}}],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 10},
+            },
+        )
+
+    client = LLMClient(
+        settings, db, transport=httpx.MockTransport(handler), token_provider=lambda: "x"
+    )
+    with pytest.raises(ValueError, match="Invalid structured output after retry"):
+        client.call("normalize", Normalized, {"text": "die Sitzung"}, user, run_id)
+    with db.connect() as conn:
+        assert [row[0] for row in conn.execute("SELECT outcome FROM llm_calls ORDER BY id")] == [
+            "schema_failure",
+            "schema_failure",
+        ]
+
+
+def test_a_card_quotes_the_source_character_not_the_model_render(settings):
+    """The tolerance is only safe if the stored sentence is the source's own.
+
+    The model is given a letter with a non-breaking space and returns the same
+    sentence with a plain one; the card must carry the letter's character, not
+    the model's rendering of it.
+    """
+    source = "Die Sitzung am 12.11.26\u00a0 wird sie es tun."
+    model_sentence = "Die Sitzung am 12.11.26 wird sie es tun."
+
+    class FoldedClient(RecordedClient):
+        def call(self, stage, schema, data, user, run_id, **kwargs):
+            if stage == "normalize":
+                return Normalized(
+                    mostly_german=True,
+                    reason="German",
+                    source_text=source,
+                    sentences=[model_sentence],
+                )
+            return super().call(stage, schema, data, user, run_id, **kwargs)
+
+    capture_id = capture(settings, source)
+    db = Database(settings.data_dir)
+    pipeline = Pipeline(settings, db, FoldedClient(text=model_sentence))
+    pipeline.process(capture_id)
+
+    with db.connect() as conn:
+        sentences = [row[0] for row in conn.execute("SELECT sentence FROM encounters")]
+    assert sentences, "the capture produced no encounter"
+    assert all("\u00a0" in sentence for sentence in sentences), sentences

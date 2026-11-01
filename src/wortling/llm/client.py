@@ -92,26 +92,47 @@ class LLMClient:
                     "check reasoning_effort and output budget"
                 )
             output = ""
+            parsed = None
+            failure = ""
+            problem = ""
+            cause = None
             try:
                 output = result["choices"][0]["message"]["content"]
                 parsed = schema.model_validate_json(output)
-                if validator is not None:
-                    validator(parsed)
             except (ValidationError, ValueError, TypeError, KeyError, IndexError) as exc:
-                self.log(user, run_id, stage, model, version, usage, "schema_failure")
-                if attempt:
-                    raise ValueError(f"Invalid structured output after retry for {stage}") from exc
-                messages.append({"role": "assistant", "content": output or ""})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": "Your output failed schema validation. "
-                        "Return only JSON matching the supplied schema. " + str(exc)[:1200],
-                    }
-                )
+                failure, problem, cause = "schema_failure", str(exc), exc
             else:
+                if validator is not None:
+                    # A validator rejection is not malformed JSON. Both used to
+                    # log schema_failure and raise "invalid structured output",
+                    # so a capture refused for one non-breaking space reported
+                    # the model's JSON as broken and sent the next reader to the
+                    # model instead of to the rule that refused it.
+                    try:
+                        validator(parsed)
+                    except (ValueError, TypeError) as exc:
+                        failure, problem, cause = "validator_rejected", str(exc), exc
+            if not failure:
                 self.log(user, run_id, stage, model, version, usage, "ok")
                 return parsed
+            self.log(user, run_id, stage, model, version, usage, failure)
+            if attempt:
+                if failure == "validator_rejected":
+                    raise ValueError(
+                        f"{stage} returned valid JSON that failed its validator: {problem}"
+                    ) from cause
+                raise ValueError(
+                    f"Invalid structured output after retry for {stage}: {problem}"
+                ) from cause
+            messages.append({"role": "assistant", "content": output or ""})
+            if failure == "validator_rejected":
+                hint = "Your output failed validation: " + problem[:1200]
+            else:
+                hint = (
+                    "Your output failed schema validation. "
+                    "Return only JSON matching the supplied schema. " + problem[:1200]
+                )
+            messages.append({"role": "user", "content": hint})
         raise AssertionError("retry loop exhausted")
 
     def log(self, user, run_id, stage, model, version, usage, outcome):
