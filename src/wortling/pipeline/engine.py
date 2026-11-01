@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import re
+import unicodedata
 import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -159,14 +160,96 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
             position = found + len(segment)
 
 
+# The characters a model rewrites without meaning to. It reproduces the words of
+# a pasted text and re-keys the punctuation around them: a non-breaking space
+# becomes a space (this capture), a curly quote becomes straight, an en dash
+# becomes a hyphen. None of those change what the letter says, so none of them
+# may cost a capture. NFKC handles the compatibility cases (the "ﬁ" ligature,
+# the non-breaking space); the table handles the rest and drops the characters
+# that are invisible when printed.
+_FOLDED = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u2032": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201e": '"',
+        "\u201f": '"',
+        "\u2033": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2212": "-",
+        "\u00ad": None,
+        "\u200b": None,
+        "\u200c": None,
+        "\u200d": None,
+        "\ufeff": None,
+    }
+)
+
+
+def fidelity_form(text: str | None) -> str:
+    """The words of a text, for the quote checks and for nothing else.
+
+    The rule is that a sentence is the source's sentence, not that it reproduces
+    its bytes. So both sides are folded: NFKC, the punctuation a model re-keys,
+    and every run of Unicode whitespace or line ending down to one space. A
+    paraphrase still differs here, in words or in order, which is why the fold is
+    safe; only the characters that carry no meaning are forgiven.
+    """
+    folded = unicodedata.normalize("NFKC", text or "").translate(_FOLDED)
+    return " ".join(folded.split())
+
+
+def source_span(source: str, sentence: str) -> tuple[int, int] | None:
+    """Where in the source this sentence is, or None when it is not there.
+
+    A sentence that matches in fidelity form is quoted back from the source
+    itself rather than from the model's rendering of it: a card that prints a
+    straight quote where the letter printed a curly one is a small lie about the
+    source, and the tolerance above is only safe if the original characters are
+    what get stored.
+    """
+    wanted = fidelity_form(sentence).split()
+    if not wanted:
+        return None
+    words = [(match.start(), match.end()) for match in re.finditer(r"\S+", source)]
+    forms = [fidelity_form(source[start:end]) for start, end in words]
+    width = len(wanted)
+    for index in range(len(forms) - width + 1):
+        if forms[index : index + width] == wanted:
+            return words[index][0], words[index + width - 1][1]
+    return None
+
+
+def quoted_sentence(source: str, sentence: str) -> str | None:
+    """The source's own characters for this sentence, or None if it is absent.
+
+    Byte-identical sentences come back unchanged; so do sentences that differ
+    only in the characters fidelity_form folds. Anything else is absent, and the
+    caller refuses it rather than passing the model's paraphrase through.
+    """
+    if sentence in source:
+        return sentence
+    span = source_span(source, sentence)
+    return source[span[0] : span[1]] if span else None
+
+
 def validate_normalized(value: Normalized, source_text: str | None, image: bool) -> None:
-    if not image and value.source_text not in {"", source_text}:
+    if not image and fidelity_form(value.source_text) not in {"", fidelity_form(source_text)}:
         raise ValueError("Normalize must not rewrite supplied source text")
     source = (
         ((source_text + "\n") if source_text else "") + value.source_text if image else source_text
     )
-    if any(sentence not in (source or "") for sentence in value.sentences):
-        raise ValueError("Normalize must select verbatim sentences from the source")
+    for sentence in value.sentences:
+        if quoted_sentence(source or "", sentence) is None:
+            raise ValueError(
+                "Normalize must quote sentences from the source; "
+                f"{sentence!r} is not one of them (same words, same order)"
+            )
 
 
 def preserve_short_source(value: Normalized) -> None:
@@ -381,11 +464,19 @@ class Pipeline:
         if source_text and image:
             normalized.source_text = source_text + "\n" + normalized.source_text
         if source_text and not image:
-            if normalized.source_text not in {"", source_text}:
+            if fidelity_form(normalized.source_text) not in {"", fidelity_form(source_text)}:
                 raise ValueError("Normalize rewrote source text")
             normalized.source_text = source_text
-        if any(sentence not in normalized.source_text for sentence in normalized.sentences):
-            raise ValueError("Normalize emitted a sentence absent from the source")
+        source = normalized.source_text or ""
+        kept = []
+        for sentence in normalized.sentences:
+            quoted = quoted_sentence(source, sentence)
+            if quoted is None:
+                raise ValueError(
+                    f"Normalize emitted a sentence absent from the source: {sentence!r}"
+                )
+            kept.append(quoted)
+        normalized.sentences = kept
         preserve_short_source(normalized)
         with self.db.connect() as conn:
             conn.execute(
