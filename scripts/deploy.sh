@@ -30,8 +30,12 @@ uv run pytest -q
 # answer: another project's idle worker reports zero running jobs, so picking
 # one by position would pass this guard while this project's worker was busy.
 # The project name is what compose would derive - COMPOSE_PROJECT_NAME, else the
-# directory name, lowercased.
-project=$(printf '%s' "${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)")}" | tr '[:upper:]' '[:lower:]')
+# directory name, lowercased and stripped to [a-z0-9_-]. The strip matters: a
+# checkout in a directory with a dot or a space (`Wortling.Test-1`) normalizes to
+# `wortlingtest-1`, and lowercasing alone would query `wortling.test-1`, match
+# nothing, and skip this guard silently - the same shape as the fourteen hours.
+project=$(printf '%s' "${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)")}" \
+  | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g')
 workers=$(docker ps \
   --filter "label=com.docker.compose.project=${project}" \
   --filter label=com.docker.compose.service=worker \
@@ -45,6 +49,11 @@ done
 if [[ "$count" -gt 1 ]]; then
   echo "deploy: project ${project} has ${count} worker containers running; refusing to guess which one to check" >&2
   exit 1
+fi
+if [[ "$count" -eq 0 ]]; then
+  # Say it. A guard that skips without a word is indistinguishable from the one
+  # that vanished here for fourteen hours.
+  echo "deploy: no running worker in project ${project} - nothing to wait for"
 fi
 if [[ "$count" -eq 1 ]]; then
   docker exec "$worker" python -c '
