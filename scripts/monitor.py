@@ -15,7 +15,108 @@ import urllib.request
 from pathlib import Path
 
 
-def collect(repo):
+class ProbeCannotRun(RuntimeError):
+    """The probe never got as far as asking the worker anything.
+
+    This is not a statement about the worker. Reporting it as one is what paged
+    the operator for fourteen hours with "worker_probe_unavailable" while the
+    worker answered `ops-check` fine on every hand-run, and the reason - compose
+    refusing to interpolate a missing BUILD_SHA - sat on a stderr nobody kept.
+
+    One worker fault lands here too, deliberately: a worker whose `ops-check`
+    exits without a parsable report. The text of that crash rides in
+    `metrics["probe_error"]`, and the issue is still named for the probe because
+    that is what an operator has to look at first.
+    """
+
+
+def compose_project(repo):
+    """The compose project a checkout belongs to, as compose itself derives it.
+
+    `COMPOSE_PROJECT_NAME` wins; otherwise compose uses the directory name,
+    lowercased with anything outside `[a-z0-9_-]` dropped. Scoping the docker
+    query to this project is what stops a second learner's worker from answering
+    for this one.
+    """
+    name = os.environ.get("COMPOSE_PROJECT_NAME") or Path(repo or ".").resolve().name
+    return "".join(
+        character for character in name.lower() if character.isalnum() or character in "-_"
+    )
+
+
+def worker_container(repo, timeout=30):
+    """The running worker container for this checkout, addressed without compose.
+
+    `docker-compose exec` interpolates the whole compose file before it does
+    anything, and compose.yaml requires BUILD_SHA (the build gate), so a
+    watchdog that shells out through compose goes blind in a checkout that is on
+    main - a requirement that has nothing to do with exec'ing into a container
+    that is already running. Asking the docker daemon for the container skips
+    the file entirely.
+
+    The question is scoped to the checkout's compose project and refused when it
+    has more than one answer: another project's idle worker reporting zero
+    running jobs is indistinguishable from this one's, and picking the first
+    name docker prints is how a check on the wrong container passes.
+    """
+    project = compose_project(repo)
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"label=com.docker.compose.project={project}",
+                "--filter",
+                "label=com.docker.compose.service=worker",
+                "--format",
+                "{{.Names}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ProbeCannotRun(f"docker ps could not run: {exc}") from None
+    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if result.returncode or not names:
+        raise ProbeCannotRun(
+            f"no running worker container for project {project}: "
+            + (result.stderr.strip() or "docker ps returned nothing")
+        )
+    if len(names) > 1:
+        raise ProbeCannotRun(
+            f"project {project} has several worker containers and none can be assumed: "
+            + ", ".join(sorted(names))
+        )
+    return names[0]
+
+
+def probe_worker(repo, timeout=60):
+    """The worker's own operational report, or ProbeCannotRun."""
+    container = worker_container(repo)
+    try:
+        result = subprocess.run(
+            ["docker", "exec", container, "wortling", "ops-check", "--probe-provider"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ProbeCannotRun(f"docker exec into {container} could not run: {exc}") from None
+    try:
+        report = json.loads(result.stdout)
+    except ValueError as exc:
+        raise ProbeCannotRun(
+            "the probe produced no report from "
+            + container
+            + ": "
+            + (result.stderr.strip() or str(exc))
+        ) from None
+    return report, result.returncode, result.stderr.strip()
+
+
+def collect(repo=None):
     issues = []
     metrics = {}
     try:
@@ -25,20 +126,19 @@ def collect(repo):
     except Exception:
         issues.append("api_unreachable")
     try:
-        result = subprocess.run(
-            ["docker-compose", "exec", "-T", "worker", "wortling", "ops-check", "--probe-provider"],
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        report = json.loads(result.stdout)
-        issues.extend(report["issues"])
-        metrics = report["metrics"]
-        if result.returncode and not report["issues"]:
-            issues.append("worker_probe_failed")
-    except Exception:
-        issues.append("worker_probe_unavailable")
+        report, returncode, stderr = probe_worker(repo)
+    except ProbeCannotRun as exc:
+        # Distinct from a sick worker, and carrying the reason: a check that
+        # could not run is a fact about the watchdog, never about the service.
+        issues.append("probe_cannot_run")
+        metrics = {"probe_error": str(exc)[:400]}
+        return {"issues": sorted(set(issues)), "metrics": metrics}
+    issues.extend(report["issues"])
+    metrics = report["metrics"]
+    if returncode and not report["issues"]:
+        issues.append("worker_probe_failed")
+        if stderr:
+            metrics = {**metrics, "probe_warning": stderr[:400]}
     return {"issues": sorted(set(issues)), "metrics": metrics}
 
 

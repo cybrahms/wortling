@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -150,6 +151,54 @@ def test_failed_alert_delivery_does_not_suppress_retry(tmp_path):
     assert len(sent) == 1
 
 
+class _Answer:
+    """What subprocess.run returns, for a fake that answers docker."""
+
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
+
+
+class _HealthyAPI:
+    """A health endpoint that says ok, as a context manager like urlopen's."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self):
+        return b'{"status": "ok"}'
+
+
+class _Docker:
+    """subprocess.run for a docker daemon that has (or has not) a worker.
+
+    Records every argv so a test can assert what the watchdog actually invoked,
+    which is the whole point of the compose finding: the command it ran was the
+    defect, not the answer it got.
+    """
+
+    def __init__(self, names=("wortling-worker-1",), stdout="", stderr="", returncode=0):
+        self.names, self.stdout, self.stderr, self.returncode = names, stdout, stderr, returncode
+        self.calls = []
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        if argv[:2] == ["docker", "ps"]:
+            return _Answer(stdout="".join(name + "\n" for name in self.names))
+        if argv[:2] == ["docker", "exec"]:
+            return _Answer(self.stdout, self.stderr, self.returncode)
+        raise AssertionError(f"the watchdog ran something unexpected: {argv}")
+
+
+def _watching(monkeypatch, docker):
+    module = monitor_module()
+    monkeypatch.setattr(module.subprocess, "run", docker)
+    monkeypatch.setattr(module.urllib.request, "urlopen", lambda *args, **kwargs: _HealthyAPI())
+    return module
+
+
 def test_host_watchdog_detects_api_and_worker_outages(monkeypatch):
     module = monitor_module()
 
@@ -158,4 +207,111 @@ def test_host_watchdog_detects_api_and_worker_outages(monkeypatch):
 
     monkeypatch.setattr(module.urllib.request, "urlopen", broken)
     monkeypatch.setattr(module.subprocess, "run", broken)
-    assert module.collect(".")["issues"] == ["api_unreachable", "worker_probe_unavailable"]
+    report = module.collect(".")
+    assert report["issues"] == ["api_unreachable", "probe_cannot_run"]
+    assert "probe_error" in report["metrics"]
+
+
+def test_the_probe_does_not_go_through_compose(monkeypatch):
+    """The outage: compose refuses to interpolate without BUILD_SHA, so a
+    watchdog that exec'd through it went blind in a checkout on main while the
+    worker answered fine. The probe now asks the daemon for the container, which
+    needs no compose file and no build sha."""
+    monkeypatch.delenv("BUILD_SHA", raising=False)
+    monkeypatch.delenv("COMPOSE_PROJECT_NAME", raising=False)
+    repo = Path("wortling")
+    docker = _Docker(stdout=json.dumps({"issues": [], "metrics": {"jobs": {"done": 49}}}))
+    module = _watching(monkeypatch, docker)
+
+    report = module.collect(repo)
+
+    assert report == {"issues": [], "metrics": {"jobs": {"done": 49}}}
+    compose_calls = [
+        call
+        for call in docker.calls
+        if call[0] == "docker-compose" or call[:2] == ["docker", "compose"]
+    ]
+    assert not compose_calls, compose_calls
+    assert [
+        "docker",
+        "exec",
+        "wortling-worker-1",
+        "wortling",
+        "ops-check",
+        "--probe-provider",
+    ] in docker.calls
+    ps = next(call for call in docker.calls if call[:2] == ["docker", "ps"])
+    assert f"label=com.docker.compose.project={Path(repo).resolve().name.lower()}" in ps, ps
+
+
+def test_a_probe_that_cannot_run_names_the_toolchain_not_the_worker(monkeypatch):
+    """Fourteen hours of "worker_probe_unavailable" with the worker healthy.
+    A probe that never ran is a fact about the watchdog, and it has to carry the
+    reason it could not run."""
+    docker = _Docker(names=(), stdout="", stderr="")
+    module = _watching(monkeypatch, docker)
+
+    report = module.collect(".")
+
+    assert report["issues"] == ["probe_cannot_run"]
+    assert "no running worker container" in report["metrics"]["probe_error"]
+
+
+def test_the_reason_the_probe_could_not_run_survives_into_the_report(monkeypatch):
+    gate = "error while interpolating services.api.build.args.BUILD_SHA: required variable"
+    docker = _Docker(stdout="", stderr=gate, returncode=1)
+    module = _watching(monkeypatch, docker)
+
+    report = module.collect(".")
+
+    assert report["issues"] == ["probe_cannot_run"]
+    assert "BUILD_SHA" in report["metrics"]["probe_error"]
+
+
+def test_a_worker_that_reports_issues_is_still_the_workers_problem(monkeypatch):
+    stdout = json.dumps({"issues": ["failed_jobs"], "metrics": {"jobs": {"failed": 1}}})
+    docker = _Docker(stdout=stdout)
+    module = _watching(monkeypatch, docker)
+
+    report = module.collect(".")
+
+    assert report["issues"] == ["failed_jobs"]
+    assert report["metrics"] == {"jobs": {"failed": 1}}
+
+
+def install_monitor_module():
+    path = Path(__file__).resolve().parents[1] / "deploy" / "install-monitor.py"
+    spec = importlib.util.spec_from_file_location("wortling_install_monitor", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_installed_plist_carries_no_build_sha(tmp_path):
+    """A commit id parked in a launchd plist is how the watchdog was unblinded
+    on 2026-11-01, and how it would have been blinded again by the next
+    install. The probe needs no build sha; the plist must not imply one."""
+    import plistlib
+    import re
+
+    repo = tmp_path / "wortling"
+    logs = tmp_path / "logs"
+    payload = install_monitor_module().plist(repo, tmp_path, logs)
+
+    assert "BUILD_SHA" not in payload.decode()
+    assert not re.search(r"\b[0-9a-f]{40}\b", payload.decode())
+    assert plistlib.loads(payload)["Label"] == "space.sublayer.wortling-monitor"
+
+
+def test_the_probe_refuses_to_choose_between_two_worker_containers(monkeypatch):
+    """Two workers for one project is not a question with an answer. Picking the
+    first name docker prints is how a check on the wrong container passes."""
+    repo = Path("wortling")
+    docker = _Docker(names=("wortling-worker-1", "wortling-worker-2"), stdout="{}")
+    module = _watching(monkeypatch, docker)
+
+    report = module.collect(repo)
+
+    assert report["issues"] == ["probe_cannot_run"]
+    assert "several worker containers" in report["metrics"]["probe_error"]
+    assert not [call for call in docker.calls if call[:2] == ["docker", "exec"]]
