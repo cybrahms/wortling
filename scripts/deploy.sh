@@ -25,9 +25,29 @@ uv run pytest -q
 # call failed, the test saw an empty string, and this guard - the one that keeps
 # a deploy from yanking the worker under an active capture - was silently
 # skipped. Same coupling as the watchdog's, same fix.
-workers=$(docker ps --filter label=com.docker.compose.service=worker --format '{{.Names}}')
-if [[ -n "$workers" ]]; then
-  docker exec "${workers%%$'\n'*}" python -c '
+#
+# Scoped to this checkout's compose project, and refused when several workers
+# answer: another project's idle worker reports zero running jobs, so picking
+# one by position would pass this guard while this project's worker was busy.
+# The project name is what compose would derive - COMPOSE_PROJECT_NAME, else the
+# directory name, lowercased.
+project=$(printf '%s' "${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)")}" | tr '[:upper:]' '[:lower:]')
+workers=$(docker ps \
+  --filter "label=com.docker.compose.project=${project}" \
+  --filter label=com.docker.compose.service=worker \
+  --format '{{.Names}}')
+count=0
+worker=""
+for name in $workers; do
+  count=$((count + 1))
+  worker=$name
+done
+if [[ "$count" -gt 1 ]]; then
+  echo "deploy: project ${project} has ${count} worker containers running; refusing to guess which one to check" >&2
+  exit 1
+fi
+if [[ "$count" -eq 1 ]]; then
+  docker exec "$worker" python -c '
 import sqlite3
 from wortling.config import load_settings
 db=sqlite3.connect(load_settings().data_dir / "wortling.sqlite3")

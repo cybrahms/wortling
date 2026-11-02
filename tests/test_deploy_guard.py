@@ -74,3 +74,47 @@ esac""",
     assert "BUILD_SHA" not in environment
     assert result.returncode == 1
     assert "Wait for active captures" in result.stderr
+
+
+def test_the_busy_worker_guard_asks_about_this_project_and_refuses_to_guess(tmp_path):
+    """Two workers answering one question is not an answer: another project's
+    idle worker reports zero running jobs, so picking by position would pass this
+    guard while this project's worker was busy."""
+
+    def command(name, body):
+        path = tmp_path / name
+        path.write_text("#!/bin/sh\n" + body + "\n")
+        path.chmod(0o755)
+
+    command("git", 'case "$1" in status) ;; rev-parse) echo head;; esac')
+    command("forge", 'echo \'{"terminal":true,"succeeded":true}\'')
+    command("uv", "exit 0")
+    command(
+        "docker",
+        """echo "$@" >> "$DOCKER_LOG"
+case "$1" in
+ps) printf 'wortling-worker-1\\nwortling-worker-2\\n';;
+exec) exit 1;;
+*) exit 98;;
+esac""",
+    )
+    script = Path(__file__).resolve().parents[1] / "scripts/deploy.sh"
+    log = tmp_path / "docker.log"
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
+            "DOCKER_LOG": str(log),
+        },
+    )
+
+    assert result.returncode == 1
+    assert "refusing to guess" in result.stderr
+    invocations = log.read_text().splitlines()
+    ps = next(line for line in invocations if line.startswith("ps"))
+    project = Path(script).resolve().parents[1].name.lower()
+    assert f"label=com.docker.compose.project={project}" in ps, ps
+    assert not [line for line in invocations if line.startswith("exec")]

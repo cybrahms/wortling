@@ -22,11 +22,30 @@ class ProbeCannotRun(RuntimeError):
     the operator for fourteen hours with "worker_probe_unavailable" while the
     worker answered `ops-check` fine on every hand-run, and the reason - compose
     refusing to interpolate a missing BUILD_SHA - sat on a stderr nobody kept.
+
+    One worker fault lands here too, deliberately: a worker whose `ops-check`
+    exits without a parsable report. The text of that crash rides in
+    `metrics["probe_error"]`, and the issue is still named for the probe because
+    that is what an operator has to look at first.
     """
 
 
-def worker_container(timeout=30):
-    """The running worker container, addressed without compose.
+def compose_project(repo):
+    """The compose project a checkout belongs to, as compose itself derives it.
+
+    `COMPOSE_PROJECT_NAME` wins; otherwise compose uses the directory name,
+    lowercased with anything outside `[a-z0-9_-]` dropped. Scoping the docker
+    query to this project is what stops a second learner's worker from answering
+    for this one.
+    """
+    name = os.environ.get("COMPOSE_PROJECT_NAME") or Path(repo or ".").resolve().name
+    return "".join(
+        character for character in name.lower() if character.isalnum() or character in "-_"
+    )
+
+
+def worker_container(repo, timeout=30):
+    """The running worker container for this checkout, addressed without compose.
 
     `docker-compose exec` interpolates the whole compose file before it does
     anything, and compose.yaml requires BUILD_SHA (the build gate), so a
@@ -34,12 +53,20 @@ def worker_container(timeout=30):
     main - a requirement that has nothing to do with exec'ing into a container
     that is already running. Asking the docker daemon for the container skips
     the file entirely.
+
+    The question is scoped to the checkout's compose project and refused when it
+    has more than one answer: another project's idle worker reporting zero
+    running jobs is indistinguishable from this one's, and picking the first
+    name docker prints is how a check on the wrong container passes.
     """
+    project = compose_project(repo)
     try:
         result = subprocess.run(
             [
                 "docker",
                 "ps",
+                "--filter",
+                f"label=com.docker.compose.project={project}",
                 "--filter",
                 "label=com.docker.compose.service=worker",
                 "--format",
@@ -54,22 +81,20 @@ def worker_container(timeout=30):
     names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if result.returncode or not names:
         raise ProbeCannotRun(
-            "no running worker container: "
+            f"no running worker container for project {project}: "
             + (result.stderr.strip() or "docker ps returned nothing")
         )
-    if "wortling-worker-1" in names:
-        return "wortling-worker-1"
     if len(names) > 1:
         raise ProbeCannotRun(
-            "several worker containers are running and none is wortling-worker-1: "
+            f"project {project} has several worker containers and none can be assumed: "
             + ", ".join(sorted(names))
         )
     return names[0]
 
 
-def probe_worker(timeout=60):
+def probe_worker(repo, timeout=60):
     """The worker's own operational report, or ProbeCannotRun."""
-    container = worker_container()
+    container = worker_container(repo)
     try:
         result = subprocess.run(
             ["docker", "exec", container, "wortling", "ops-check", "--probe-provider"],
@@ -101,7 +126,7 @@ def collect(repo=None):
     except Exception:
         issues.append("api_unreachable")
     try:
-        report, returncode, stderr = probe_worker()
+        report, returncode, stderr = probe_worker(repo)
     except ProbeCannotRun as exc:
         # Distinct from a sick worker, and carrying the reason: a check that
         # could not run is a fact about the watchdog, never about the service.

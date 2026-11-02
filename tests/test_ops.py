@@ -218,10 +218,12 @@ def test_the_probe_does_not_go_through_compose(monkeypatch):
     worker answered fine. The probe now asks the daemon for the container, which
     needs no compose file and no build sha."""
     monkeypatch.delenv("BUILD_SHA", raising=False)
+    monkeypatch.delenv("COMPOSE_PROJECT_NAME", raising=False)
+    repo = Path("wortling")
     docker = _Docker(stdout=json.dumps({"issues": [], "metrics": {"jobs": {"done": 49}}}))
     module = _watching(monkeypatch, docker)
 
-    report = module.collect(".")
+    report = module.collect(repo)
 
     assert report == {"issues": [], "metrics": {"jobs": {"done": 49}}}
     compose_calls = [
@@ -238,6 +240,8 @@ def test_the_probe_does_not_go_through_compose(monkeypatch):
         "ops-check",
         "--probe-provider",
     ] in docker.calls
+    ps = next(call for call in docker.calls if call[:2] == ["docker", "ps"])
+    assert f"label=com.docker.compose.project={Path(repo).resolve().name.lower()}" in ps, ps
 
 
 def test_a_probe_that_cannot_run_names_the_toolchain_not_the_worker(monkeypatch):
@@ -297,3 +301,17 @@ def test_the_installed_plist_carries_no_build_sha(tmp_path):
     assert "BUILD_SHA" not in payload.decode()
     assert not re.search(r"\b[0-9a-f]{40}\b", payload.decode())
     assert plistlib.loads(payload)["Label"] == "space.sublayer.wortling-monitor"
+
+
+def test_the_probe_refuses_to_choose_between_two_worker_containers(monkeypatch):
+    """Two workers for one project is not a question with an answer. Picking the
+    first name docker prints is how a check on the wrong container passes."""
+    repo = Path("wortling")
+    docker = _Docker(names=("wortling-worker-1", "wortling-worker-2"), stdout="{}")
+    module = _watching(monkeypatch, docker)
+
+    report = module.collect(repo)
+
+    assert report["issues"] == ["probe_cannot_run"]
+    assert "several worker containers" in report["metrics"]["probe_error"]
+    assert not [call for call in docker.calls if call[:2] == ["docker", "exec"]]
