@@ -19,8 +19,15 @@ uv run ruff check .
 uv run ruff format --check .
 uv run playwright install firefox
 uv run pytest -q
-if [[ -n "$(docker-compose ps --status running -q worker)" ]]; then
-  docker-compose exec -T worker python -c '
+# Addressed with docker, not compose: compose interpolates the whole file
+# before it does anything, and compose.yaml requires BUILD_SHA, which this script
+# only sets on the `up` line below. Run under a shell without it and the compose
+# call failed, the test saw an empty string, and this guard - the one that keeps
+# a deploy from yanking the worker under an active capture - was silently
+# skipped. Same coupling as the watchdog's, same fix.
+workers=$(docker ps --filter label=com.docker.compose.service=worker --format '{{.Names}}')
+if [[ -n "$workers" ]]; then
+  docker exec "${workers%%$'\n'*}" python -c '
 import sqlite3
 from wortling.config import load_settings
 db=sqlite3.connect(load_settings().data_dir / "wortling.sqlite3")
