@@ -3,6 +3,10 @@
 Capture German text, web pages, and photos, then turn selected encounters into Anki cards.
 Each learner has a separate queue, known-word index, and collection.
 
+The [card style guide](docs/card-style.md) defines context selection, short-label
+cards, answer layout and the always-visible full translation. Useful vocabulary
+must not be discarded merely because it came from a label or interface.
+
 The GitHub repository is a read-only mirror. Changes are made in the primary
 Gitea repository and published automatically.
 
@@ -30,12 +34,19 @@ uv run pytest -q
 
 ## Deployment
 
-Create an ignored `.env` and `config.yaml`, then run `docker-compose up --build -d`.
-The API and worker share a persistent data volume.
+Create an ignored `.env` and `config.yaml`, then build with `scripts/build.sh` and
+start the service with
 
-On macOS the `docker compose` plugin is often not installed while the v1 binary is
-(`/opt/homebrew/bin/docker-compose`, which has no `compose` subcommand), so the
-hyphenated form is the one that works. Both are the same Compose file. Configure HTTPS using your own
+    BUILD_SHA=$(git rev-parse HEAD) docker compose up -d
+
+The script fetches `main` and refuses a commit `main` does not contain, then builds
+with the image labelled with that commit; Compose refuses to load a model with no
+`BUILD_SHA`, so there is no path to an unlabelled or unmerged image. The variable
+is required for `up` as well as `build`, because Compose interpolates the whole
+file before it does anything. `scripts/deploy.sh` passes the commit it is
+deploying for exactly that reason. The API and worker share a persistent data
+volume.
+Configure HTTPS using your own
 hostname and certificate; `deploy/Caddyfile.tailnet` is an environment-based example.
 Keep the service behind a private network unless you have reviewed its exposure.
 The example hostname `wortling.example.invalid` must be replaced for deployment.

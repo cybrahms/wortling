@@ -45,6 +45,7 @@ def test_report_exposes_saved_capture_job_status(settings):
 
 
 def test_reprocess_changes_owned_fields_without_new_card(settings):
+    settings.llm.prompt_versions["extract"] = "v4"
     from test_pipeline import RecordedClient, capture
 
     from wortling.pipeline.engine import Pipeline
@@ -68,6 +69,7 @@ def test_reprocess_changes_owned_fields_without_new_card(settings):
 
 
 def test_reprocess_removes_obsolete_pending_sense(settings):
+    settings.llm.prompt_versions["extract"] = "v4"
     from test_pipeline import RecordedClient, capture
 
     from wortling.pipeline.engine import Pipeline

@@ -37,6 +37,14 @@
 - id: compound-nebenkosten
   text: Die Nebenkostenabrechnung ist angekommen.
   expected: [Nebenkostenabrechnung]
+  # The recorded response also offered "Nebenkosten" from inside
+  # "Nebenkostenabrechnung". The extraction validator refuses that surface and
+  # the retry carries the reason ("quote the whole source word") to the model;
+  # a replay of the same recorded text cannot repair itself, so this case
+  # asserts the refusal rather than a note. The refusal now says the JSON was
+  # valid and a validator refused it, which is the difference between a model
+  # problem and a rule problem.
+  refused: "returned valid JSON that failed its validator"
 - id: compound-elternabend
   text: Der Elternabend findet am Donnerstag statt.
   expected: [Elternabend, stattfinden]

@@ -6,6 +6,11 @@ from wortling.config import Settings
 from wortling.db import Database
 
 
+def heartbeat(settings: Settings) -> None:
+    path = settings.data_dir / "worker-heartbeat"
+    path.touch(mode=0o600, exist_ok=True)
+
+
 def run(settings: Settings, *, once: bool = False) -> None:
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -20,8 +25,10 @@ def run(settings: Settings, *, once: bool = False) -> None:
         signal.signal(sig, lambda *_: stop.set())
     logging.info("Wortling worker ready; writes remain controlled per learner")
     while not stop.is_set():
+        heartbeat(settings)
         tick(settings, db)
         work = pipeline.run_once()
+        heartbeat(settings)
         if once:
             break
         if not work:

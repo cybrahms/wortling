@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from importlib.resources import files
 from typing import TypeVar
 
@@ -15,13 +16,19 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class LLMClient:
-    def __init__(
-        self, settings: Settings, db: Database, *, transport=None, token_provider=hyper_token
-    ):
+    def __init__(self, settings: Settings, db: Database, *, transport=None, token_provider=None):
         self.settings = settings
         self.db = db
         self.transport = transport
-        self.token_provider = token_provider
+        self.token_provider = token_provider or self.configured_token
+
+    def configured_token(self) -> str:
+        variable = self.settings.llm.api_key_env
+        if variable:
+            if key := os.environ.get(variable):
+                return key
+            raise RuntimeError(f"Missing model provider credential: {variable}")
+        return hyper_token()
 
     def call(
         self,
@@ -61,6 +68,8 @@ class LLMClient:
                     },
                 },
             }
+            if config.reasoning_effort is not None:
+                body["reasoning_effort"] = config.reasoning_effort
             try:
                 with httpx.Client(transport=self.transport, timeout=120) as client:
                     response = client.post(
@@ -70,33 +79,60 @@ class LLMClient:
                     )
             except httpx.HTTPError as exc:
                 self.log(user, run_id, stage, model, version, {}, "transport_error")
-                raise RuntimeError(f"Hyper {stage} request failed: {type(exc).__name__}") from exc
+                raise RuntimeError(f"LLM {stage} request failed: {type(exc).__name__}") from exc
             if not response.is_success:
                 self.log(user, run_id, stage, model, version, {}, "http_error")
-                raise RuntimeError(f"Hyper {stage} call failed (HTTP {response.status_code})")
+                raise RuntimeError(f"LLM {stage} call failed (HTTP {response.status_code})")
             result = response.json()
             usage = result.get("usage", {})
+            if result.get("choices") and result["choices"][0].get("finish_reason") == "length":
+                self.log(user, run_id, stage, model, version, usage, "output_truncated")
+                raise ValueError(
+                    f"LLM {stage} output truncated at {config.max_output_tokens} tokens; "
+                    "check reasoning_effort and output budget"
+                )
             output = ""
+            parsed = None
+            failure = ""
+            problem = ""
+            cause = None
             try:
                 output = result["choices"][0]["message"]["content"]
                 parsed = schema.model_validate_json(output)
-                if validator is not None:
-                    validator(parsed)
             except (ValidationError, ValueError, TypeError, KeyError, IndexError) as exc:
-                self.log(user, run_id, stage, model, version, usage, "schema_failure")
-                if attempt:
-                    raise ValueError(f"Invalid structured output after retry for {stage}") from exc
-                messages.append({"role": "assistant", "content": output or ""})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": "Your output failed schema validation. "
-                        "Return only JSON matching the supplied schema. " + str(exc)[:1200],
-                    }
-                )
+                failure, problem, cause = "schema_failure", str(exc), exc
             else:
+                if validator is not None:
+                    # A validator rejection is not malformed JSON. Both used to
+                    # log schema_failure and raise "invalid structured output",
+                    # so a capture refused for one non-breaking space reported
+                    # the model's JSON as broken and sent the next reader to the
+                    # model instead of to the rule that refused it.
+                    try:
+                        validator(parsed)
+                    except (ValueError, TypeError) as exc:
+                        failure, problem, cause = "validator_rejected", str(exc), exc
+            if not failure:
                 self.log(user, run_id, stage, model, version, usage, "ok")
                 return parsed
+            self.log(user, run_id, stage, model, version, usage, failure)
+            if attempt:
+                if failure == "validator_rejected":
+                    raise ValueError(
+                        f"{stage} returned valid JSON that failed its validator: {problem}"
+                    ) from cause
+                raise ValueError(
+                    f"Invalid structured output after retry for {stage}: {problem}"
+                ) from cause
+            messages.append({"role": "assistant", "content": output or ""})
+            if failure == "validator_rejected":
+                hint = "Your output failed validation: " + problem[:1200]
+            else:
+                hint = (
+                    "Your output failed schema validation. "
+                    "Return only JSON matching the supplied schema. " + problem[:1200]
+                )
+            messages.append({"role": "user", "content": hint})
         raise AssertionError("retry loop exhausted")
 
     def log(self, user, run_id, stage, model, version, usage, outcome):

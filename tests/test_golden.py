@@ -69,7 +69,14 @@ def test_recorded_extraction(case, settings):
     client = LLMClient(
         settings, db, transport=httpx.MockTransport(handler), token_provider=lambda: "test"
     )
-    Pipeline(settings, db, client).process(capture_id)
+    pipeline = Pipeline(settings, db, client)
+    if refused := case.get("refused"):
+        # The recorded response breaks a surface rule, so the validator refuses it
+        # and the retry that follows carries the reason. A replay cannot adapt.
+        with pytest.raises(ValueError, match=refused):
+            pipeline.process(capture_id)
+        return
+    pipeline.process(capture_id)
     with db.connect() as conn:
         stored = {row[0] for row in conn.execute("SELECT lemma_key FROM items")}
     for expected in case["expected"]:

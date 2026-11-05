@@ -178,14 +178,15 @@ def test_pipeline_hands_extraction_clauses_not_the_paragraph(settings):
             if stage == "extract":
                 # The payload is the span list; sentence_id is the index. Pick the
                 # longest span carrying the word, the way a model that ignored the
-                # cap would.
+                # cap would. Each span arrives as {"sentence_id", "text"} since the
+                # extract prompt took that shape, so the text is what to read.
                 index = max(
                     (
                         number
-                        for number, text in enumerate(data["sentences"])
-                        if "Sendungsverfolgung" in text
+                        for number, span in enumerate(data["sentences"])
+                        if "Sendungsverfolgung" in span["text"]
                     ),
-                    key=lambda number: len(data["sentences"][number]),
+                    key=lambda number: len(data["sentences"][number]["text"]),
                 )
                 return Extracted.model_validate(
                     {

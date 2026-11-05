@@ -225,16 +225,46 @@ def test_cloze_builder_preserves_printed_lines_and_separable_parts():
     validate_cloze(result, sentence)
 
 
-def test_cloze_builder_trims_only_at_original_boundaries():
+def test_cloze_builder_preserves_selected_context_even_over_25_words():
     from wortling.pipeline.engine import build_cloze
 
     sentence = " ".join([f"Wort{i}" for i in range(60)])
     text = build_cloze(sentence, "Wort30", "word thirty")
     from wortling.pipeline.engine import CLOZE
 
-    assert len(CLOZE.sub(lambda match: match[1], text).split()) == 25
+    assert CLOZE.sub(lambda match: match[1], text) == sentence
     assert "{{c1::Wort30::word thirty}}" in text
     validate_cloze(text, sentence)
+
+
+def test_long_request_keeps_modal_and_full_translation_context():
+    from wortling.pipeline.engine import CLOZE, build_cloze
+
+    sentence = (
+        "wir sind gerade im Urlaub und wollten euch fragen, ob ihr bitte die "
+        "Pakete vor unserer Haustür für uns entgegennehmen und kurz bei euch "
+        "aufbewahren könntet."
+    )
+    text = build_cloze(sentence, "entgegennehmen", "receive on our behalf")
+    assert CLOZE.sub(lambda match: match[1], text) == sentence
+    assert text.endswith("aufbewahren könntet.")
+
+
+def test_whole_label_keeps_a_usable_english_question():
+    from wortling.pipeline.engine import build_cloze
+
+    assert build_cloze("Trittbrett", "Trittbrett", "scooter standing platform") == (
+        "{{c1::Trittbrett::scooter standing platform}}"
+    )
+
+
+def test_noun_plural_is_not_repeated_in_supporting_forms():
+    from wortling.pipeline.engine import supporting_forms
+
+    assert supporting_forms("Plural: die Beeinträchtigungen", "noun") == ""
+    assert supporting_forms("Nom. die Bezahlung, Dat. der Bezahlung", "noun") == ""
+    assert supporting_forms("—", "adjective") == ""
+    assert supporting_forms("bat · hat gebeten", "phrase") == "bat · hat gebeten"
 
 
 def test_generate_validator_rejects_missing_noun_plural():
@@ -343,9 +373,12 @@ def test_short_screenshot_labels_reach_extraction_even_if_normalize_omits_them(s
                     sentences=[SCOOTER_LABELS[0], SCOOTER_LABELS[2]],
                 )
             assert stage == "extract"
+            assert [sentence["sentence_id"] for sentence in data["sentences"]] == list(
+                range(len(data["sentences"]))
+            )
             for label in SCOOTER_LABELS:
-                assert any(label in sentence for sentence in data["sentences"]), label
-            assert all(sentence in transcript for sentence in data["sentences"])
+                assert any(label in sentence["text"] for sentence in data["sentences"]), label
+            assert all(sentence["text"] in transcript for sentence in data["sentences"])
             return Extracted(candidates=[])
 
     Pipeline(settings, Database(settings.data_dir), SparseNormalizer()).process(capture_id)
@@ -383,3 +416,388 @@ def test_phrase_cannot_be_deduped_against_its_base_verb():
         Candidate.model_validate(data)
     data.update(lemma="schief laufen", pos="phrase")
     assert Candidate.model_validate(data).lemma == "schief laufen"
+
+
+def test_extraction_ids_include_skipped_metadata_and_senses_are_lookup_keys(settings):
+    db = Database(settings.data_dir)
+    original = capture(settings, "Die Sitzung beginnt morgen.")
+    Pipeline(settings, db, RecordedClient()).process(original)
+    source = "12:30\nDie Sitzung beginnt morgen.\nshop.example.invalid"
+    second = capture(settings, source)
+
+    class IndexedClient(RecordedClient):
+        def call(self, stage, schema, data, *args, **kwargs):
+            if stage == "normalize":
+                return Normalized(
+                    mostly_german=True,
+                    reason="German",
+                    source_text=source,
+                    sentences=source.splitlines(),
+                )
+            if stage == "extract":
+                assert data["sentences"] == [
+                    {"sentence_id": 0, "text": "12:30"},
+                    {"sentence_id": 1, "text": "Die Sitzung beginnt morgen."},
+                    {"sentence_id": 2, "text": "shop.example.invalid"},
+                ]
+                assert data["existing_senses"] == [
+                    {"lemma_key": "sitzung", "sense_key": "meeting", "gloss": "meeting"}
+                ]
+                value = super().call(stage, schema, data, *args, **kwargs)
+                value.candidates[0].sentence_id = 1
+                return value
+            return super().call(stage, schema, data, *args, **kwargs)
+
+    Pipeline(settings, db, IndexedClient()).process(second)
+    with db.connect() as conn:
+        assert (
+            conn.execute("SELECT status FROM captures WHERE id=?", (second,)).fetchone()[0]
+            == "processed"
+        )
+
+
+def test_a_short_surface_quotes_the_whole_word_not_part_of_one():
+    """Rule: do not leave part of an inflected word unclozed."""
+    from wortling.pipeline.engine import build_cloze
+
+    text = build_cloze("Bitte reichen Sie eine schriftliche Entschuldigung ein.", "ein", "in")
+    assert "{{c1::ein::in}}" in text
+    assert "{{c1::ein}}e" not in text
+    assert "{{c1::ein::in}}." in text
+
+
+def test_a_surface_that_only_occurs_inside_a_word_is_refused():
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze("Die Anmeldung ist da.", "Anmeld", "registration")
+
+
+@pytest.mark.parametrize(
+    ("sentence", "stem", "whole"),
+    [
+        ("Unser*e Kurier*in liefert das Paket.", "Kurier", "Kurier*in"),
+        ("Die Lehrer:in kommt gleich.", "Lehrer", "Lehrer:in"),
+        ("Die Kolleg_innen kommen.", "Kolleg", "Kolleg_innen"),
+        ("Alle Leser/innen sind eingeladen.", "Leser", "Leser/innen"),
+    ],
+)
+def test_an_inclusive_separator_is_inside_the_word(sentence, stem, whole):
+    """Kurier*in, Lehrer:in, Kolleg_innen: the separator does not end the word."""
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze(sentence, stem, "stem only")
+    assert "{{c1::" + whole + "::" in build_cloze(sentence, whole, "whole form")
+
+
+def test_a_hyphen_is_still_a_word_boundary():
+    """E-Mail and Ein-Euro-Laden are compounds whose parts are closable."""
+    from wortling.pipeline.engine import build_cloze
+
+    assert "{{c1::E-Mail::email}}" in build_cloze("Sie schickt eine E-Mail.", "E-Mail", "email")
+
+
+@pytest.mark.parametrize(
+    ("sentence", "surface", "gloss"),
+    [
+        ("Sie sagte: Ich komme morgen.", "sagte", "said"),
+        ("Er antwortete nur: ja.", "nur", "only"),
+        ("Die Regel lautet einfach: üben.", "einfach", "simple"),
+        ("Er kam, sah und siegte: der Rest ist Geschichte.", "siegte", "conquered"),
+    ],
+)
+def test_a_colon_at_a_clause_end_is_a_word_boundary(sentence, surface, gloss):
+    """A joiner only joins when the far side of it does.
+
+    Reading "*:_/" as word-internal on sight refused an ordinary "sagte:" and
+    told the model to quote the whole word it had already quoted, which is the
+    one refusal the retry cannot repair.
+    """
+    from wortling.pipeline.engine import build_cloze
+
+    assert "{{c1::" + surface + "::" in build_cloze(sentence, surface, gloss)
+
+
+def test_the_validator_accepts_a_whole_word_before_a_colon():
+    """The colon case reaches the model as a false reason unless the far side decides."""
+    from wortling.pipeline.engine import validate_extraction
+    from wortling.pipeline.schemas import Extracted
+
+    extracted = Extracted.model_validate(
+        {
+            "candidates": [
+                {
+                    "sentence_id": 0,
+                    "lemma": "sagen",
+                    "surface": "sagte",
+                    "pos": "verb",
+                    "sense_gloss": "said",
+                    "sense_key": "say",
+                    "is_phrase": False,
+                    "cefr_estimate": "A1",
+                    "domain": "speech",
+                }
+            ]
+        }
+    )
+    validate_extraction(extracted, ["Sie sagte: Ich komme morgen."])
+
+
+def test_a_run_of_joiners_is_still_inside_the_word():
+    """Kolleg*_innen: the character beyond the run is what decides."""
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze("Die Kolleg*_innen kommen.", "Kolleg", "colleague")
+    assert "{{c1::Kolleg*_innen::" in build_cloze(
+        "Die Kolleg*_innen kommen.", "Kolleg*_innen", "colleagues"
+    )
+
+
+def test_a_separator_inside_a_longer_word_still_refuses():
+    """und/oder must keep refusing und: leaving /oder out is the failure."""
+    from wortling.pipeline.engine import build_cloze
+
+    with pytest.raises(ValueError, match="inside a longer word"):
+        build_cloze("und/oder beides.", "und", "and")
+
+
+def test_the_extraction_validator_refuses_a_mid_word_surface_so_the_model_can_fix_it():
+    """The retry runs inside the extract call, where a reason still reaches the model."""
+    from wortling.pipeline.engine import validate_extraction
+    from wortling.pipeline.schemas import Extracted
+
+    extracted = Extracted.model_validate(
+        {
+            "candidates": [
+                {
+                    "sentence_id": 0,
+                    "lemma": "der Kurier",
+                    "surface": "Kurier",
+                    "pos": "noun",
+                    "sense_gloss": "courier",
+                    "sense_key": "courier",
+                    "is_phrase": False,
+                    "cefr_estimate": "A2",
+                    "domain": "transit",
+                }
+            ]
+        }
+    )
+    with pytest.raises(ValueError, match="quote the whole source word"):
+        validate_extraction(extracted, ["Unser*e Kurier*in liefert das Paket."])
+    # Quoting the whole inclusive form is accepted by the same validator.
+    extracted.candidates[0].surface = "Kurier*in"
+    validate_extraction(extracted, ["Unser*e Kurier*in liefert das Paket."])
+
+
+# ------------------------------------------------------------------ fidelity
+#
+# A model reproduces the words of a pasted text and re-keys the characters it
+# finds meaningless: a non-breaking space (the capture this came from), a curly
+# quote, an en dash, a ligature. None of those change what the letter says, so
+# the check compares words and the stored sentence quotes the source. A
+# paraphrase or a re-ordering still fails - both directions are tested, or the
+# tolerance would be an acceptance.
+
+
+@pytest.mark.parametrize(
+    "model_dialect, source_dialect",
+    [
+        ("12.11./13.11.26 wird sie", "12.11./13.11.26\u00a0 wird sie"),
+        ("a b c", "a    b\n c"),
+        ('Er sagte: "ja".', "Er sagte: \u201eja\u201c."),
+        ("Er sagte: 'ja'.", "Er sagte: \u2018ja\u2019."),
+        ("ein fi Schild", "ein \ufb01 Schild"),
+        ("a - b", "a \u2013 b"),
+        ("softhyphen", "soft\u00adhyphen"),
+        ("zerowidth", "zero\u200bwidth"),
+    ],
+)
+def test_fidelity_form_forgives_the_characters_a_model_rekeys(model_dialect, source_dialect):
+    from wortling.pipeline.engine import fidelity_form
+
+    assert fidelity_form(model_dialect) == fidelity_form(source_dialect)
+
+
+def test_a_quoted_sentence_keeps_the_source_characters():
+    from wortling.pipeline.engine import quoted_sentence
+
+    source = "Auch die Gespräche am 12.11./13.11.26\u00a0 wird sie laut Terminplan führen."
+    model = "Auch die Gespräche am 12.11./13.11.26 wird sie laut Terminplan führen."
+
+    assert quoted_sentence(source, model) == (
+        "Auch die Gespräche am 12.11./13.11.26\u00a0 wird sie laut Terminplan führen."
+    )
+    assert "\u00a0" in quoted_sentence(source, model)
+
+
+def test_validate_normalized_accepts_a_folded_but_verbatim_sentence():
+    from wortling.pipeline.engine import validate_normalized
+
+    source = "Er sagte: \u201edas passt\u201c\u00a0 und ging."
+    value = Normalized(
+        mostly_german=True,
+        reason="German",
+        source_text=source.replace("\u201e", '"').replace("\u201c", '"').replace("\u00a0", " "),
+        sentences=['Er sagte: "das passt" und ging.'],
+    )
+    validate_normalized(value, source, False)
+
+
+def test_a_fragment_of_the_source_is_still_a_sentence():
+    from wortling.pipeline.engine import validate_normalized
+
+    source = "Er sagte: \u201edas passt\u201c\u00a0 und ging."
+    value = Normalized(
+        mostly_german=True, reason="German", source_text=source, sentences=["und ging."]
+    )
+    validate_normalized(value, source, False)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Er sagte: das passt und ging.",  # the quote marks are gone: a rewrite
+        "Er sagte, dass es passt und ging.",  # paraphrase
+        "und ging Er sagte: das passt",  # re-ordered
+        "Er sagte: \u201edas passt\u201c und lief.",  # one word swapped
+    ],
+)
+def test_a_paraphrase_or_a_reordering_still_fails(sentence):
+    from wortling.pipeline.engine import validate_normalized
+
+    source = "Er sagte: \u201edas passt\u201c\u00a0 und ging."
+    value = Normalized(
+        mostly_german=True,
+        reason="German",
+        source_text=source,
+        sentences=[sentence],
+    )
+    with pytest.raises(ValueError, match="quote sentences from the source"):
+        validate_normalized(value, source, False)
+
+
+def test_llm_reports_a_validator_rejection_apart_from_a_schema_failure(settings):
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    user = settings.users[0]
+    run_id = str(uuid.uuid4())
+    capture_id = capture(settings, "die Sitzung")
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO processing_runs(id,capture_id,prompt_version,status,started_at) "
+            "VALUES (?,?,?,'running',?)",
+            (run_id, capture_id, "v1", now()),
+        )
+
+    def handler(request):
+        # Valid JSON, refused by a rule about the content rather than the shape.
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "mostly_german": True,
+                                    "reason": "German",
+                                    "source_text": "die Sitzung",
+                                    "sentences": ["the meeting"],
+                                }
+                            )
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 10},
+            },
+        )
+
+    def refuses_the_content(value):
+        raise ValueError("the sentence is not in the source")
+
+    client = LLMClient(
+        settings, db, transport=httpx.MockTransport(handler), token_provider=lambda: "x"
+    )
+    with pytest.raises(ValueError, match="returned valid JSON that failed its validator"):
+        client.call(
+            "normalize",
+            Normalized,
+            {"text": "die Sitzung"},
+            user,
+            run_id,
+            validator=refuses_the_content,
+        )
+    with db.connect() as conn:
+        assert [row[0] for row in conn.execute("SELECT outcome FROM llm_calls ORDER BY id")] == [
+            "validator_rejected",
+            "validator_rejected",
+        ]
+
+
+def test_llm_still_reports_a_schema_failure_as_a_schema_failure(settings):
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    user = settings.users[0]
+    run_id = str(uuid.uuid4())
+    capture_id = capture(settings, "die Sitzung")
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO processing_runs(id,capture_id,prompt_version,status,started_at) "
+            "VALUES (?,?,?,'running',?)",
+            (run_id, capture_id, "v1", now()),
+        )
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "not json at all"}}],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 10},
+            },
+        )
+
+    client = LLMClient(
+        settings, db, transport=httpx.MockTransport(handler), token_provider=lambda: "x"
+    )
+    with pytest.raises(ValueError, match="Invalid structured output after retry"):
+        client.call("normalize", Normalized, {"text": "die Sitzung"}, user, run_id)
+    with db.connect() as conn:
+        assert [row[0] for row in conn.execute("SELECT outcome FROM llm_calls ORDER BY id")] == [
+            "schema_failure",
+            "schema_failure",
+        ]
+
+
+def test_a_card_quotes_the_source_character_not_the_model_render(settings):
+    """The tolerance is only safe if the stored sentence is the source's own.
+
+    The model is given a letter with a non-breaking space and returns the same
+    sentence with a plain one; the card must carry the letter's character, not
+    the model's rendering of it.
+    """
+    source = "Die Sitzung am 12.11.26\u00a0 wird sie es tun."
+    model_sentence = "Die Sitzung am 12.11.26 wird sie es tun."
+
+    class FoldedClient(RecordedClient):
+        def call(self, stage, schema, data, user, run_id, **kwargs):
+            if stage == "normalize":
+                return Normalized(
+                    mostly_german=True,
+                    reason="German",
+                    source_text=source,
+                    sentences=[model_sentence],
+                )
+            return super().call(stage, schema, data, user, run_id, **kwargs)
+
+    capture_id = capture(settings, source)
+    db = Database(settings.data_dir)
+    pipeline = Pipeline(settings, db, FoldedClient(text=model_sentence))
+    pipeline.process(capture_id)
+
+    with db.connect() as conn:
+        sentences = [row[0] for row in conn.execute("SELECT sentence FROM encounters")]
+    assert sentences, "the capture produced no encounter"
+    assert all("\u00a0" in sentence for sentence in sentences), sentences

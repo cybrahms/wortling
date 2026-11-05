@@ -3,6 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends restic ca-certi
     && rm -rf /var/lib/apt/lists/*
 ARG BUILD_SHA=development
 ENV WORTLING_BUILD_SHA=$BUILD_SHA
+LABEL org.opencontainers.image.revision=$BUILD_SHA
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 ENV PATH="/app/.venv/bin:$PATH"

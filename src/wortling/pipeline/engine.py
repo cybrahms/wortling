@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import re
+import unicodedata
 import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -30,38 +31,118 @@ def validate_cloze(text: str, sentence: str) -> None:
         raise ValueError("Generated cloze rewrote the original sentence")
 
 
-def build_cloze(sentence: str, surface: str, gloss: str, context_words: int = 25) -> str:
+# German gender-inclusive writing joins a stem to its ending instead of inflecting
+# it: Kurier*in, Lehrer:in, Kolleg_innen, Leser/innen. Those separators are inside
+# the word, so a stem that stops there leaves part of the source word unclozed -
+# the style guide names Kurier*in by name. A hyphen stays a boundary: E-Mail and
+# Ein-Euro-Laden are compounds whose parts are legitimately closable.
+WORD_JOINERS = frozenset("*:_/")
+
+
+def _inside_word(sentence: str, index: int, step: int) -> bool:
+    """True when the character at `index` continues the word the match abuts.
+
+    `step` is -1 for the character before a match and +1 for the one after it.
+
+    A joiner is inside a word only when the far side of it is too: "*" in
+    "Kurier*in" continues the word because "i" follows, while the ":" in
+    "Sie sagte:" does not because a space does. Reading the joiner alone made a
+    colon at a clause end refuse a surface that was already the whole word, and
+    that is the one refusal the model cannot repair - it is told to quote the
+    whole word, and it already did. A run of joiners is read through, so
+    "Kolleg*_innen" holds; the character beyond the run decides.
+    """
+    if not 0 <= index < len(sentence):
+        return False
+    if sentence[index].isalnum():
+        return True
+    if sentence[index] not in WORD_JOINERS:
+        return False
+    beyond = index + step
+    while 0 <= beyond < len(sentence) and sentence[beyond] in WORD_JOINERS:
+        beyond += step
+    return 0 <= beyond < len(sentence) and sentence[beyond].isalnum()
+
+
+def whole_word_at(sentence: str, part: str, position: int) -> int:
+    """Index of `part` at or after `position` that is not inside a longer word.
+
+    A short surface is a substring of a longer word often enough to matter: "ein"
+    in "eine" turned "Bitte reichen Sie eine ... ein" into "{{c1::ein}}e", and
+    "Kurier" in "Kurier*in" would leave the inclusive ending outside the cloze.
+    The style guide says not to leave part of an inflected or inclusive word
+    unclozed, so the occurrence has to be word-bounded.
+    """
+    start = position
+    while (found := sentence.find(part, start)) >= 0:
+        end = found + len(part)
+        if not (_inside_word(sentence, found - 1, -1) or _inside_word(sentence, end, 1)):
+            return found
+        start = found + 1
+    return -1
+
+
+def locate_surface(sentence: str, part: str, position: int) -> tuple[int, str]:
+    """(index, "") when `part` sits there as a whole word, else (-1, reason).
+
+    One place decides both where a surface is and why it is not usable there, so
+    the extraction validator can hand the reason to the model (which retries in
+    the same call) rather than the same sentence being rediscovered later as a
+    failed capture.
+    """
+    found = whole_word_at(sentence, part, position)
+    if found >= 0:
+        return found, ""
+    if whole_word_at(sentence, part, 0) >= 0:
+        return -1, (
+            f"Surface {part!r} already appeared before the previous part; "
+            "quote the parts in the order they are printed"
+        )
+    if sentence.find(part) >= 0:
+        return -1, (
+            f"Surface {part!r} only occurs inside a longer word; "
+            "quote the whole source word instead of part of it"
+        )
+    return -1, f"Surface {part!r} is absent from the sentence"
+
+
+def build_cloze(sentence: str, surface: str, gloss: str) -> str:
+    """Cloze the selected authentic context without cropping its grammar.
+
+    Context selection belongs to normalization, where complete meanings can be
+    considered. A word window here loses governing verbs and invalidates the
+    full-context translation. Labels remain valid contexts with English hints.
+    """
     spans = []
     position = 0
     for part in re.split(r"\s*(?:…|\.\.\.)\s*", surface):
         part = part.strip()
-        found = sentence.find(part, position)
-        if not part or found < 0:
-            raise ValueError("Cloze target is absent from the original sentence")
+        found, problem = locate_surface(sentence, part, position) if part else (-1, "")
+        if found < 0:
+            # Last-ditch assertion: validate_extraction normally catches this while
+            # the model can still be told, so reaching here means the pipeline lost
+            # its own guard.
+            raise ValueError(problem or "Cloze target is absent from the original sentence")
         spans.append((found, found + len(part)))
         position = found + len(part)
-    words = list(re.finditer(r"\S+", sentence))
-    start, end = 0, len(sentence)
-    if len(words) > context_words:
-        first = next(i for i, word in enumerate(words) if word.end() > spans[0][0])
-        last = max(i for i, word in enumerate(words) if word.start() < spans[-1][1])
-        span_length = last - first + 1
-        width = max(context_words, span_length)
-        left = max(0, first - max(0, (width - span_length) // 2))
-        right = min(len(words), left + width)
-        left = max(0, right - width)
-        start, end = words[left].start(), words[right - 1].end()
     hint = gloss.replace("::", ":").replace("{{", "").replace("}}", "")
-    result = sentence[start:end]
+    result = sentence
     for index, (left, right) in reversed(list(enumerate(spans))):
         target = sentence[left:right]
         cloze = "{{c1::" + target + ("::" + hint if index == 0 else "") + "}}"
-        result = result[: left - start] + cloze + result[right - start :]
+        result = result[:left] + cloze + result[right:]
     validate_cloze(result, sentence)
     return result
 
 
 def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
+    """Refuse a surface the cloze builder could not quote, while the model can fix it.
+
+    This runs as the extract call's validator, so a refusal is retried inside that
+    call with the reason attached and the model gets the chance to quote the whole
+    word. Catching the same defect later, in build_cloze, would cost the whole
+    capture instead of one retry.
+    """
     for item in extracted.candidates:
         if item.sentence_id >= len(sentences):
             raise ValueError("Extract referenced a missing sentence")
@@ -69,11 +150,12 @@ def validate_extraction(extracted: Extracted, sentences: list[str]) -> None:
         position = 0
         for segment in re.split(r"\s*(?:…|\.\.\.)\s*", item.surface):
             segment = segment.strip()
-            found = sentence.find(segment, position)
-            if not segment or found < 0:
+            found, problem = locate_surface(sentence, segment, position) if segment else (-1, "")
+            if found < 0:
                 raise ValueError(
-                    f"Surface {item.surface!r} is absent from sentence "
-                    f"{item.sentence_id}. Use the original spelling and split parts."
+                    f"{problem or f'Surface {item.surface!r} is absent'} "
+                    f"(sentence {item.sentence_id}). Use the original spelling, whole "
+                    "words, and the split parts in the order they are printed."
                 )
             position = found + len(segment)
 
@@ -288,18 +370,106 @@ def shortest_span(sentences: list[str], surface: str) -> int | None:
             if best is None or len(sentence) < len(sentences[best]):
                 best = index
     return best
+# The characters a model rewrites without meaning to. It reproduces the words of
+# a pasted text and re-keys the punctuation around them: a non-breaking space
+# becomes a space (this capture), a curly quote becomes straight, an en dash
+# becomes a hyphen. None of those change what the letter says, so none of them
+# may cost a capture. NFKC handles the compatibility cases (the "ﬁ" ligature,
+# the non-breaking space); the table handles the rest and drops the characters
+# that are invisible when printed.
+_FOLDED = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u2032": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201e": '"',
+        "\u201f": '"',
+        "\u2033": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2212": "-",
+        "\u00ad": None,
+        "\u200b": None,
+        "\u200c": None,
+        "\u200d": None,
+        "\ufeff": None,
+    }
+)
+
+
+def fidelity_form(text: str | None) -> str:
+    """The words of a text, for the quote checks and for nothing else.
+
+    The rule is that a sentence is the source's sentence, not that it reproduces
+    its bytes. So both sides are folded: NFKC, the punctuation a model re-keys,
+    and every run of Unicode whitespace or line ending down to one space. A
+    paraphrase still differs here, in words or in order, which is why the fold is
+    safe; only the characters that carry no meaning are forgiven.
+    """
+    folded = unicodedata.normalize("NFKC", text or "").translate(_FOLDED)
+    return " ".join(folded.split())
+
+
+def source_span(source: str, sentence: str) -> tuple[int, int] | None:
+    """Where in the source this sentence is, or None when it is not there.
+
+    A sentence that matches in fidelity form is quoted back from the source
+    itself rather than from the model's rendering of it: a card that prints a
+    straight quote where the letter printed a curly one is a small lie about the
+    source, and the tolerance above is only safe if the original characters are
+    what get stored.
+    """
+    wanted = fidelity_form(sentence).split()
+    if not wanted:
+        return None
+    words = [(match.start(), match.end()) for match in re.finditer(r"\S+", source)]
+    forms = [fidelity_form(source[start:end]) for start, end in words]
+    width = len(wanted)
+    for index in range(len(forms) - width + 1):
+        if forms[index : index + width] == wanted:
+            return words[index][0], words[index + width - 1][1]
+    return None
+
+
+def quoted_sentence(source: str, sentence: str) -> str | None:
+    """The source's own characters for this sentence, or None if it is absent.
+
+    Byte-identical sentences come back unchanged; so do sentences that differ
+    only in the characters fidelity_form folds. Anything else is absent, and the
+    caller refuses it rather than passing the model's paraphrase through.
+    """
+    if sentence in source:
+        return sentence
+    span = source_span(source, sentence)
+    return source[span[0] : span[1]] if span else None
 
 
 def validate_normalized(value: Normalized, source_text: str | None, image: bool) -> None:
-    if not image and value.source_text not in {"", source_text}:
+    if not image and fidelity_form(value.source_text) not in {"", fidelity_form(source_text)}:
         raise ValueError("Normalize must not rewrite supplied source text")
     source = (
         ((source_text + "\n") if source_text else "") + value.source_text if image else source_text
     )
     for sentence in value.sentences:
-        if sentence not in (source or ""):
-            raise ValueError("Normalize must select verbatim sentences from the source")
-        if cuts_mid_word(source or "", sentence):
+        # The quoted slice is the source's own characters, so the mid-word check
+        # runs on it rather than on the model's rendering: a sentence that folds a
+        # curly quote or a non-breaking space is verbatim, and comparing its edges
+        # with the source would read that folding as a cut inside a word.
+        quoted = quoted_sentence(source or "", sentence)
+        if quoted is None:
+            raise ValueError(
+                "Normalize must quote sentences from the source; "
+                f"{sentence!r} is not one of them (same words, same order)"
+            )
+        # Quoting the source is not enough on its own: a span that begins or ends
+        # inside a word is a substring of the source too ("Sendu" for "Sendung"),
+        # and a card must never show one, so both checks stand rather than one
+        # replacing the other.
+        if cuts_mid_word(source or "", quoted):
             raise ValueError(
                 "Normalize must not cut mid-word: "
                 f"{sentence[:60]!r} starts or ends inside a word of the source"
@@ -355,6 +525,13 @@ def validate_generated(generated: GeneratedCards, items: list[dict]) -> None:
             raise ValueError("Verb forms need Präteritum, Partizip II and haben/sein auxiliary")
         if lemma_key(card.lemma) != item["lemma_key"]:
             raise ValueError("Generated lemma must match the extracted dictionary lemma")
+
+
+def supporting_forms(forms: str, pos: str) -> str:
+    """Noun plurals are already required in Lemma; don't repeat them below it."""
+    if pos == "noun" or forms.strip() in {"", "—", "-", "Adjektiv", "Adverb"}:
+        return ""
+    return forms.strip()
 
 
 class Pipeline:
@@ -522,11 +699,19 @@ class Pipeline:
         if source_text and image:
             normalized.source_text = source_text + "\n" + normalized.source_text
         if source_text and not image:
-            if normalized.source_text not in {"", source_text}:
+            if fidelity_form(normalized.source_text) not in {"", fidelity_form(source_text)}:
                 raise ValueError("Normalize rewrote source text")
             normalized.source_text = source_text
-        if any(sentence not in normalized.source_text for sentence in normalized.sentences):
-            raise ValueError("Normalize emitted a sentence absent from the source")
+        source = normalized.source_text or ""
+        kept = []
+        for sentence in normalized.sentences:
+            quoted = quoted_sentence(source, sentence)
+            if quoted is None:
+                raise ValueError(
+                    f"Normalize emitted a sentence absent from the source: {sentence!r}"
+                )
+            kept.append(quoted)
+        normalized.sentences = kept
         preserve_short_source(normalized)
         # Cut what the model kept into card-sized candidates before anything
         # refers to a sentence_id, so extraction, the stored run and the card all
@@ -560,7 +745,7 @@ class Pipeline:
         with self.db.connect() as conn:
             existing_senses = [
                 {
-                    "lemma": row["lemma_key"],
+                    "lemma_key": row["lemma_key"],
                     "sense_key": row["sense_key"],
                     "gloss": json.loads(row["fields_json"])["Gloss"],
                 }
@@ -573,7 +758,13 @@ class Pipeline:
         extracted = self.client.call(
             "extract",
             Extracted,
-            {"sentences": normalized.sentences, "existing_senses": existing_senses},
+            {
+                "sentences": [
+                    {"sentence_id": index, "text": sentence}
+                    for index, sentence in enumerate(normalized.sentences)
+                ],
+                "existing_senses": existing_senses,
+            },
             user,
             run_id,
             validator=lambda value: validate_extraction(value, normalized.sentences),
@@ -764,7 +955,7 @@ class Pipeline:
                         "Key": item["lemma_key"] + ":" + item["sense_key"],
                         "Text": html.escape(card.text),
                         "Lemma": html.escape(card.lemma),
-                        "Forms": html.escape(card.forms),
+                        "Forms": html.escape(supporting_forms(card.forms, item["pos"])),
                         "Gloss": html.escape(card.gloss),
                         "SentenceEN": html.escape(card.sentence_en),
                         "CEFR": item["cefr_estimate"],
