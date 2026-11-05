@@ -370,6 +370,8 @@ def shortest_span(sentences: list[str], surface: str) -> int | None:
             if best is None or len(sentence) < len(sentences[best]):
                 best = index
     return best
+
+
 # The characters a model rewrites without meaning to. It reproduces the words of
 # a pasted text and re-keys the punctuation around them: a non-breaking space
 # becomes a space (this capture), a curly quote becomes straight, an en dash
