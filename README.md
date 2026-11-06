@@ -54,7 +54,7 @@ The example hostname `wortling.example.invalid` must be replaced for deployment.
 Create a personal browser setup link using your actual HTTPS origin:
 
 ```sh
-docker compose exec -T worker wortling setup-link --user learner --base-url https://YOUR_HOST
+docker-compose exec -T worker wortling setup-link --user learner --base-url https://YOUR_HOST
 ```
 
 Links expire after 24 hours and work once. Share each link only with its learner.
