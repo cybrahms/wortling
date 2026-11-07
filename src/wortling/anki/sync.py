@@ -4,11 +4,52 @@ import os
 from urllib.parse import urlparse
 
 from anki.collection import Collection
+from anki.errors import NetworkError, SyncError
 from anki.sync_pb2 import SyncAuth, SyncCollectionResponse, SyncStatusResponse
 
 
 class FullSyncRequired(RuntimeError):
     pass
+
+
+# Words that mean the request never reached AnkiWeb, for the exceptions that do
+# not arrive as anki's own NetworkError (httpx, a socket, the resolver).
+UNREACHABLE_HINTS = (
+    "connect",
+    "connection",
+    "timed out",
+    "timeout",
+    "name resolution",
+    "network is unreachable",
+    "no route to host",
+    "handshake",
+    "ssl",
+    "certificate",
+    "offline",
+)
+
+
+def describe_failure(exc: BaseException) -> str:
+    """One sentence saying which failure this was, for a person reading an alert.
+
+    An alert used to carry AnkiWeb's own words and nothing else, so a server
+    that had answered - "your clock is not set to the correct time" - read
+    exactly like a host that could not reach the server at all, and whoever was
+    paged went looking for a clock problem that had already gone away. A refusal
+    from AnkiWeb and an inability to reach it are different repairs, so the alert
+    says which one it was.
+    """
+    detail = str(exc).strip() or type(exc).__name__
+    unreachable = isinstance(exc, (NetworkError, ConnectionError, TimeoutError, OSError)) or any(
+        hint in detail.lower() for hint in UNREACHABLE_HINTS
+    )
+    if isinstance(exc, FullSyncRequired):
+        return "AnkiWeb asked for a full sync, which is never resolved unattended: " + detail
+    if unreachable:
+        return "could not reach AnkiWeb: " + detail
+    if isinstance(exc, SyncError):
+        return "AnkiWeb refused this request: " + detail
+    return "the Anki session failed: " + detail
 
 
 def check_endpoint(endpoint: str | None, real_access_approved: bool) -> None:

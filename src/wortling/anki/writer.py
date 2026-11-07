@@ -10,8 +10,9 @@ from pathlib import Path
 
 from anki.collection import Collection
 
+from wortling.alerts import acknowledge
 from wortling.anki.reader import effective_status, open_collection, rebuild_index
-from wortling.anki.sync import incremental_sync, login
+from wortling.anki.sync import describe_failure, incremental_sync, login
 from wortling.config import Learner, Settings
 from wortling.db import Database, now
 
@@ -289,6 +290,11 @@ def write_session(settings: Settings, db: Database, user: Learner, *, force: boo
                     "added_count=? WHERE id=?",
                     (now(), count, session_id),
                 )
+                # The write this alert was about has now succeeded, so it stops
+                # being an issue. Left open, one failed write went on paging the
+                # operator every five minutes until somebody acknowledged it by
+                # hand, two days after the write had started working again.
+                acknowledge(conn, user.id, "write_failed")
         return {"session_id": session_id, "status": "complete", "added": count}
     except Exception as exc:
         with db.connect() as conn:
@@ -299,6 +305,6 @@ def write_session(settings: Settings, db: Database, user: Learner, *, force: boo
             )
             conn.execute(
                 "INSERT INTO alerts(user_id,kind,message,created_at) VALUES (?,?,?,?)",
-                (user.id, "write_failed", str(exc)[:1000], now()),
+                (user.id, "write_failed", describe_failure(exc)[:1000], now()),
             )
         raise

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
+from wortling import alerts
 from wortling.config import Settings
 from wortling.db import Database
 from wortling.llm.client import LLMClient
@@ -58,13 +59,23 @@ def operational_status(settings: Settings, *, probe_provider=False, transport=No
                 for row in jobs
             ):
                 issues.append("running_job_lease_expired")
-            metrics["unacknowledged_alerts"] = dict(
+            # An open alert is a standing issue only while it still says
+            # something about now: a transient kind past its horizon expired on
+            # its own, and the row stays as history. Counting every open row is
+            # how one rejected request became a liveness issue for two days.
+            metrics["unacknowledged_alerts"] = alerts.standing(conn, at=timestamp)
+            if metrics["unacknowledged_alerts"]:
+                issues.append("application_alerts_unacknowledged")
+            open_records = dict(
                 conn.execute(
                     "SELECT kind,count(*) FROM alerts WHERE acknowledged_at IS NULL GROUP BY kind"
                 ).fetchall()
             )
-            if metrics["unacknowledged_alerts"]:
-                issues.append("application_alerts_unacknowledged")
+            metrics["expired_alerts"] = {
+                kind: count - metrics["unacknowledged_alerts"].get(kind, 0)
+                for kind, count in open_records.items()
+                if count - metrics["unacknowledged_alerts"].get(kind, 0)
+            }
             backup = conn.execute(
                 "SELECT created_at FROM backup_runs WHERE status='complete' "
                 "ORDER BY created_at DESC LIMIT 1"
