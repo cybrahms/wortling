@@ -10,12 +10,15 @@ Two rules live here so that every writer of `alerts` agrees on them.
 
 A success acknowledges the alerts its own kind left behind. That is what
 `capture_failed` has always done when its capture finally processes; a
-successful sync and a completed write session do it through `acknowledge`.
+successful sync, a completed write session and a finished backup do it through
+`acknowledge`.
 
 A kind with no recovery to wait for expires. A transient failure that was never
 cleared stops counting as an issue after its horizon, so a fixed problem leaves
-the operational check quiet even when nobody remembered to acknowledge it. The
-row stays as history: what stops is the standing issue, not the record.
+the operational check quiet even when nobody remembered to acknowledge it, and a
+kind whose condition ends when its period does, like the monthly budget, stops
+counting once that period is over. The row stays as history: what stops is the
+standing issue, not the record.
 """
 
 from __future__ import annotations
@@ -25,26 +28,37 @@ from datetime import UTC, datetime, timedelta
 
 from wortling.db import now
 
-# Kinds that describe one failed attempt at something that is retried on a
-# schedule, and the horizon after which an uncleared one stops counting. These
-# are deliberately longer than a retry interval and shorter than a working day:
-# six hours is four scheduled retries of a sync that runs every fifteen minutes
-# while failing, and half a night's sleep for whoever reads the report.
-TRANSIENT = {
+# The horizon after which an uncleared alert of a kind stops counting. A
+# timedelta is a retry schedule's patience: deliberately longer than a retry
+# interval and shorter than a working day, six hours being four scheduled
+# retries of a sync that runs every fifteen minutes while failing, and half a
+# night's sleep for whoever reads the report. MONTH is a condition that ends
+# with its period instead of on a clock.
+MONTH = "month"
+
+HORIZONS: dict[str, timedelta | str] = {
     "sync_failed": timedelta(hours=6),
     "write_failed": timedelta(hours=6),
+    "monthly_budget": MONTH,
 }
 
 
-def acknowledge(conn: sqlite3.Connection, user_id: str, kind: str, *, at: str | None = None) -> int:
+def acknowledge(
+    conn: sqlite3.Connection, user_id: str | None, kind: str, *, at: str | None = None
+) -> int:
     """Clear every open alert of one kind for one learner, on recovery.
+
+    `user_id` is None for a kind that belongs to nobody, a backup failing on the
+    whole installation rather than on one learner. The comparison is `IS` and
+    not `=` because `user_id = NULL` is never true, which would leave the global
+    kinds clearing nothing at all.
 
     Returns how many were cleared, which is what a test can assert and what a
     caller logging the recovery would want.
     """
     cursor = conn.execute(
         "UPDATE alerts SET acknowledged_at=? "
-        "WHERE user_id=? AND kind=? AND acknowledged_at IS NULL",
+        "WHERE user_id IS ? AND kind=? AND acknowledged_at IS NULL",
         (at or now(), user_id, kind),
     )
     return cursor.rowcount
@@ -55,16 +69,20 @@ def expired(kind: str, created_at: str, at: datetime) -> bool:
 
     An unknown kind never expires: a kind nobody taught this module a horizon
     for is one whose recovery has not been reasoned about, and silently
-    discarding it would hide the failure instead of reporting it.
+    discarding it would hide the failure instead of reporting it. A timestamp
+    this cannot read or cannot compare is treated the same way: an alert nobody
+    can date is not evidence that the condition went away.
     """
-    horizon = TRANSIENT.get(kind)
+    horizon = HORIZONS.get(kind)
     if horizon is None:
         return False
     try:
         recorded = datetime.fromisoformat(created_at)
+        if horizon == MONTH:
+            return (at.year, at.month) > (recorded.year, recorded.month)
+        return at - recorded >= horizon
     except (TypeError, ValueError):
         return False
-    return at - recorded >= horizon
 
 
 def standing(conn: sqlite3.Connection, *, at: datetime | None = None) -> dict[str, int]:

@@ -151,6 +151,82 @@ def test_a_completed_write_clears_the_write_alert(settings, monkeypatch, sync_en
         ).fetchone()[0]
 
 
+def test_a_completed_backup_clears_the_backup_alert(settings):
+    """`backup_failed` is the third kind with no way out: nothing acknowledged
+    it and it had no horizon, so an hour of disk pressure left a standing issue,
+    and the watchdog then filed a crew todo for it every day after."""
+    from wortling.backup import backup_all
+    from wortling.ops import operational_status
+
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    stale = (datetime.now(UTC) - timedelta(hours=72)).isoformat()
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) "
+            "VALUES (NULL,'backup_failed','disk',?)",
+            (stale,),
+        )
+    assert "application_alerts_unacknowledged" in operational_status(settings)["issues"]
+    backup_all(settings, db)
+    report = operational_status(settings)
+    assert "application_alerts_unacknowledged" not in report["issues"]
+    assert report["metrics"]["unacknowledged_alerts"] == {}
+    with db.connect() as conn:
+        assert conn.execute(
+            "SELECT acknowledged_at FROM alerts WHERE kind='backup_failed'"
+        ).fetchone()[0], "a finished backup clears the alert of its own kind"
+
+
+def test_the_budget_alert_stops_counting_when_its_month_is_over(settings):
+    """The budget alert belongs to nobody and waits for no retry, so a
+    successful sync cannot clear it. What ends the condition is the month it was
+    recorded in: the budget resets there whether or not anyone read the alert."""
+    from wortling.ops import operational_status
+
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    last_month = datetime.now(UTC).replace(day=1, hour=12, minute=0) - timedelta(days=1)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) "
+            "VALUES (NULL,'monthly_budget','spend reached',?)",
+            (last_month.isoformat(),),
+        )
+    report = operational_status(settings)
+    assert "application_alerts_unacknowledged" not in report["issues"]
+    assert report["metrics"]["expired_alerts"] == {"monthly_budget": 1}
+
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) "
+            "VALUES (NULL,'monthly_budget','spend reached',?)",
+            (now(),),
+        )
+    report = operational_status(settings)
+    assert report["metrics"]["unacknowledged_alerts"] == {"monthly_budget": 1}
+
+
+def test_an_undateable_alert_is_not_a_database_failure(settings):
+    """`expired` parsed the timestamp inside its `try` and subtracted outside
+    it, so one naive `created_at` raised TypeError out of `standing`, and the
+    broad handler in the operational check called the database broken instead of
+    reporting the alert."""
+    from wortling.ops import operational_status
+
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(kind,message,created_at) "
+            "VALUES ('sync_failed','refused','2026-11-01T00:00:00')"
+        )
+    report = operational_status(settings)
+    assert "database_probe_failed" not in report["issues"]
+    # An alert nobody can date is not evidence that its condition went away.
+    assert report["metrics"]["unacknowledged_alerts"] == {"sync_failed": 1}
+
+
 def test_the_alert_says_whether_ankiweb_refused_or_was_unreachable():
     """AnkiWeb's own sentence about a clock reached the operator as the whole
     story, so a server that had answered read exactly like a host that could not

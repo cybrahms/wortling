@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 from filelock import FileLock
 
+from wortling.alerts import acknowledge
 from wortling.config import Settings
 from wortling.db import Database, now
 
@@ -83,6 +84,7 @@ def backup_all(settings: Settings, db: Database) -> Path:
             )
         with db.connect() as conn:
             conn.execute("UPDATE backup_runs SET status='complete' WHERE id=?", (backup_id,))
+            acknowledge(conn, None, "backup_failed")
         for old in sorted(
             (path for path in base.iterdir() if path.is_dir()),
             key=lambda path: path.stat().st_mtime,
