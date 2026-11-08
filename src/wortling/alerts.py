@@ -10,8 +10,8 @@ Two rules live here so that every writer of `alerts` agrees on them.
 
 A success acknowledges the alerts its own kind left behind. That is what
 `capture_failed` has always done when its capture finally processes; a
-successful sync, a completed write session and a finished backup do it through
-`acknowledge`.
+successful sync, a completed write session, a forced write session the breaker
+had asked a person to review, and a finished backup do it through `acknowledge`.
 
 A kind with no recovery to wait for expires. A transient failure that was never
 cleared stops counting as an issue after its horizon, so a fixed problem leaves

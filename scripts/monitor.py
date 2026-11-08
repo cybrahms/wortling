@@ -260,13 +260,11 @@ def notify(report, state_path, *, filer=None, sender=send_alert, clock=time.time
     # A queue item is not a page: it waits until somebody works it, so a
     # repeating problem needs a fresh entry only once a day, not every hour.
     due = clock() - previous.get("last_filed", 0) >= 24 * 3600
-    recovered = not issues and previous.get("issues")
-    if (issues and (changed or due)) or recovered:
-        title = (
-            "wortling needs attention: " + ", ".join(issues)
-            if issues
-            else "wortling recovered: operational checks are healthy."
-        )
+    # A recovery is history, not work. Filing "operational checks are healthy"
+    # handed the crew a queue entry with nothing in it to triage, and the state
+    # file written below already records the moment the issue list emptied.
+    if issues and (changed or due):
+        title = "wortling needs attention: " + ", ".join(issues)
         key = incident_key(issues, clock())
         if previous.get("filed_key") == key:
             # This incident is already on the crew's queue today. Filing it

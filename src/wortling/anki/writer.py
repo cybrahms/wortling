@@ -295,6 +295,14 @@ def write_session(settings: Settings, db: Database, user: Learner, *, force: boo
                 # operator every five minutes until somebody acknowledged it by
                 # hand, two days after the write had started working again.
                 acknowledge(conn, user.id, "write_failed")
+                # The breaker is another shape of the same problem. It blocks a
+                # capture bigger than max_adds_per_run and asks for a review
+                # before --force, so a forced session that completes is that
+                # review having happened and the blocked cards now written. A
+                # session that needed no forcing knows nothing about the
+                # capture that tripped it and leaves the alert standing.
+                if force:
+                    acknowledge(conn, user.id, "circuit_breaker")
         return {"session_id": session_id, "status": "complete", "added": count}
     except Exception as exc:
         with db.connect() as conn:

@@ -173,14 +173,13 @@ def test_watchdog_files_a_crew_todo_and_rings_nobody(tmp_path):
         notify(report, state, filer=filer, sender=pages.append, clock=lambda: clock[0])
 
     assert pages == [], "the operator is not the crew's pager"
-    assert [title for title, _, _ in filed] == [
-        "wortling needs attention: failed_jobs",
-        "wortling recovered: operational checks are healthy.",
-    ]
+    assert [title for title, _, _ in filed] == ["wortling needs attention: failed_jobs"]
     assert filed[0][1]["issues"] == ["failed_jobs"]
     assert filed[0][1]["metrics"] == {"jobs": {"failed": 1}}
     assert "ops-check" in filed[0][1]["instructions"]
-    assert len({key for _, _, key in filed}) == 2
+    # The recovery is history and goes in the state file, not on the queue: a
+    # todo reading "operational checks are healthy" is a work item with no work.
+    assert json.loads(state.read_text())["issues"] == []
 
 
 def test_a_standing_incident_is_filed_once_a_day_not_once_a_run(tmp_path):

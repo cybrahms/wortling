@@ -151,6 +151,67 @@ def test_a_completed_write_clears_the_write_alert(settings, monkeypatch, sync_en
         ).fetchone()[0]
 
 
+def test_a_forced_write_clears_the_circuit_breaker(settings, monkeypatch, sync_endpoint):
+    """The breaker was the last kind with no way out. It blocks a capture over
+    max_adds_per_run and tells the reader to review before `--force`, so a
+    forced session that finishes is that review having been made and the blocked
+    cards having gone in. Left standing, one big capture made the operational
+    check unhealthy for the life of the installation, and the watchdog filed a
+    fresh crew todo for it every day."""
+    from test_anki_sync import pending, ready
+
+    from wortling.anki.writer import write_session
+
+    db, user = ready(settings, monkeypatch, sync_endpoint)
+    pending(db, user)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) VALUES (?,?,?,?)",
+            (
+                user.id,
+                "circuit_breaker",
+                "Blocked 41 additions; review before write --force",
+                now(),
+            ),
+        )
+    assert write_session(settings, db, user, force=True)["status"] == "complete"
+    with db.connect() as conn:
+        assert conn.execute(
+            "SELECT acknowledged_at FROM alerts WHERE kind='circuit_breaker'"
+        ).fetchone()[0], "the forced session is the review the breaker asked for"
+
+
+def test_an_unforced_write_leaves_the_circuit_breaker_standing(
+    settings, monkeypatch, sync_endpoint
+):
+    """A session that never needed forcing knows nothing about the capture that
+    tripped the breaker, so it is not evidence that anyone reviewed it."""
+    from test_anki_sync import pending, ready
+
+    from wortling.anki.writer import write_session
+
+    db, user = ready(settings, monkeypatch, sync_endpoint)
+    pending(db, user)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) VALUES (?,?,?,?)",
+            (
+                user.id,
+                "circuit_breaker",
+                "Blocked 41 additions; review before write --force",
+                now(),
+            ),
+        )
+    assert write_session(settings, db, user)["status"] == "complete"
+    with db.connect() as conn:
+        assert (
+            conn.execute(
+                "SELECT acknowledged_at FROM alerts WHERE kind='circuit_breaker'"
+            ).fetchone()[0]
+            is None
+        )
+
+
 def test_a_completed_backup_clears_the_backup_alert(settings):
     """`backup_failed` is the third kind with no way out: nothing acknowledged
     it and it had no horizon, so an hour of disk pressure left a standing issue,
@@ -179,19 +240,21 @@ def test_a_completed_backup_clears_the_backup_alert(settings):
 
 
 def test_the_budget_alert_stops_counting_when_its_month_is_over(settings):
-    """The budget alert belongs to nobody and waits for no retry, so a
-    successful sync cannot clear it. What ends the condition is the month it was
-    recorded in: the budget resets there whether or not anyone read the alert."""
+    """The budget alert is recorded against the learner whose spend tripped it,
+    and no success can prove that spend reset, so nothing clears it. What ends
+    the condition is the month it was recorded in: the budget resets there
+    whether or not anyone read the alert."""
     from wortling.ops import operational_status
 
     db = Database(settings.data_dir)
     db.initialize(settings)
+    user_id = settings.users[0].id
     last_month = datetime.now(UTC).replace(day=1, hour=12, minute=0) - timedelta(days=1)
     with db.connect() as conn:
         conn.execute(
             "INSERT INTO alerts(user_id,kind,message,created_at) "
-            "VALUES (NULL,'monthly_budget','spend reached',?)",
-            (last_month.isoformat(),),
+            "VALUES (?,'monthly_budget','spend reached',?)",
+            (user_id, last_month.isoformat()),
         )
     report = operational_status(settings)
     assert "application_alerts_unacknowledged" not in report["issues"]
@@ -200,8 +263,8 @@ def test_the_budget_alert_stops_counting_when_its_month_is_over(settings):
     with db.connect() as conn:
         conn.execute(
             "INSERT INTO alerts(user_id,kind,message,created_at) "
-            "VALUES (NULL,'monthly_budget','spend reached',?)",
-            (now(),),
+            "VALUES (?,'monthly_budget','spend reached',?)",
+            (user_id, now()),
         )
     report = operational_status(settings)
     assert report["metrics"]["unacknowledged_alerts"] == {"monthly_budget": 1}
