@@ -81,6 +81,39 @@ def test_application_alerts_backup_and_sync_failures(healthy):
     assert "private" not in str(report)
 
 
+def test_an_uncleared_transient_alert_stops_counting_as_an_issue(healthy):
+    """The two-day page. A `sync_failed` nobody acknowledged was a standing
+    issue forever, so one request AnkiWeb rejected kept the watchdog red long
+    after the sync worked again. A transient kind expires; the row stays as
+    history and the operational check goes quiet."""
+    settings, db = healthy
+    stale = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(kind,message,created_at) VALUES ('sync_failed','refused',?)",
+            (stale,),
+        )
+    report = operational_status(settings)
+    assert "application_alerts_unacknowledged" not in report["issues"]
+    assert report["metrics"]["unacknowledged_alerts"] == {}
+    assert report["metrics"]["expired_alerts"] == {"sync_failed": 1}
+
+    # A kind inside its horizon is still an issue, and the horizon is per kind:
+    # an alert nobody taught a horizon for never expires on its own.
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(kind,message,created_at) VALUES ('circuit_breaker','review',?)",
+            (stale,),
+        )
+        conn.execute(
+            "INSERT INTO alerts(kind,message,created_at) VALUES ('write_failed','refused',?)",
+            (now(),),
+        )
+    report = operational_status(settings)
+    assert report["metrics"]["unacknowledged_alerts"] == {"circuit_breaker": 1, "write_failed": 1}
+    assert "application_alerts_unacknowledged" in report["issues"]
+
+
 def test_synthetic_key_is_required_without_hyper_fallback(healthy, monkeypatch):
     settings, db = healthy
     settings.llm.api_key_env = "SYNTHETIC_API_KEY"
@@ -121,34 +154,93 @@ def monitor_module():
     return module
 
 
-def test_watchdog_pages_deduplicates_reminds_and_recovers(tmp_path):
+def test_watchdog_files_a_crew_todo_and_rings_nobody(tmp_path):
+    """The decision the harness made on 2026-10-21, now made by this watchdog:
+    a queue item the crew reads, and a quiet phone. Two days of paging over one
+    rejected AnkiWeb request is the other order's bill."""
     notify = monitor_module().notify
     state = tmp_path / "state.json"
-    messages = []
+    filed, pages = [], []
     clock = [10000]
-    bad = {"issues": ["failed_jobs"], "metrics": {}}
+    bad = {"issues": ["failed_jobs"], "metrics": {"jobs": {"failed": 1}}}
     good = {"issues": [], "metrics": {}}
+
+    def filer(title, payload, key):
+        filed.append((title, payload, key))
+
     for report, advance in [(bad, 0), (bad, 300), (bad, 3600), (good, 300), (good, 300)]:
         clock[0] += advance
-        notify(report, state, sender=messages.append, clock=lambda: clock[0])
-    assert len(messages) == 3
-    assert "failed_jobs" in messages[0]
-    assert "recovered" in messages[-1]
+        notify(report, state, filer=filer, sender=pages.append, clock=lambda: clock[0])
+
+    assert pages == [], "the operator is not the crew's pager"
+    assert [title for title, _, _ in filed] == ["wortling needs attention: failed_jobs"]
+    assert filed[0][1]["issues"] == ["failed_jobs"]
+    assert filed[0][1]["metrics"] == {"jobs": {"failed": 1}}
+    assert "ops-check" in filed[0][1]["instructions"]
+    # The recovery is history and goes in the state file, not on the queue: a
+    # todo reading "operational checks are healthy" is a work item with no work.
+    assert json.loads(state.read_text())["issues"] == []
 
 
-def test_failed_alert_delivery_does_not_suppress_retry(tmp_path):
+def test_a_standing_incident_is_filed_once_a_day_not_once_a_run(tmp_path):
     notify = monitor_module().notify
     state = tmp_path / "state.json"
+    filed = []
+    clock = [10000]
+    bad = {"issues": ["failed_jobs"], "metrics": {}}
+    for advance in [0, 300, 300, 300, 86400]:
+        clock[0] += advance
+        notify(
+            bad,
+            state,
+            filer=lambda *args: filed.append(args),
+            sender=lambda _: None,
+            clock=lambda: clock[0],
+        )
+    assert len(filed) == 2
+    assert filed[0][2] != filed[1][2]
 
-    def broken(message):
+
+def test_a_queue_that_cannot_be_written_pages_instead(tmp_path):
+    """The page survives only as the fallback: if the todo cannot be filed, the
+    operator is the last reader there is."""
+    notify = monitor_module().notify
+    state = tmp_path / "state.json"
+    pages = []
+
+    def broken(title, payload, key):
+        raise RuntimeError("sbpush: http 502")
+
+    notify({"issues": ["failed_jobs"], "metrics": {}}, state, filer=broken, sender=pages.append)
+    assert pages == ["wortling needs attention: failed_jobs"]
+    assert state.exists()
+
+    # Neither path working means nothing was recorded, and the state must not
+    # claim the incident was filed, or the next run would stay silent.
+    def also_broken(message):
         raise RuntimeError("delivery failed")
 
     with pytest.raises(RuntimeError):
-        notify({"issues": ["failed_jobs"], "metrics": {}}, state, sender=broken)
-    assert not state.exists()
-    sent = []
-    notify({"issues": ["failed_jobs"], "metrics": {}}, state, sender=sent.append)
-    assert len(sent) == 1
+        notify(
+            {"issues": ["failed_jobs", "api_unreachable"], "metrics": {}},
+            state,
+            filer=broken,
+            sender=also_broken,
+        )
+    assert json.loads(state.read_text())["issues"] == ["failed_jobs"]
+
+
+def test_clock_error_is_named_in_seconds_not_relayed_as_the_vendors_words(monkeypatch):
+    module = monitor_module()
+    docker = _Docker(stdout=json.dumps({"issues": [], "metrics": {}}))
+    monkeypatch.setattr(module.subprocess, "run", docker)
+    monkeypatch.setattr(module.urllib.request, "urlopen", lambda *args, **kwargs: _HealthyAPI())
+
+    report = module.collect(Path("wortling"), skew=lambda: 47)
+
+    assert report["metrics"]["clock_skew_seconds"] == 47
+    assert "host_clock_skew" in report["issues"]
+    assert module.collect(Path("wortling"), skew=lambda: 0.2)["issues"] == []
 
 
 class _Answer:

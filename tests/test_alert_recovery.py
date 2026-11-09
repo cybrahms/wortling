@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from test_pipeline import RecordedClient, capture
 
 from wortling.db import Database, now
@@ -79,3 +81,246 @@ def test_migration_links_only_unambiguous_legacy_failures(settings):
         row = conn.execute("SELECT * FROM alerts WHERE message='Unique'").fetchone()
         assert row["capture_id"] == first
         assert row["acknowledged_at"]
+
+
+def test_a_recovered_sync_clears_its_own_alert(settings, monkeypatch, sync_endpoint):
+    """The failure that paged the operator for two days: one rejected request
+    left a `sync_failed` alert open, and the operational check counts an open
+    alert as a standing issue. A sync that works again clears its own alert,
+    the way a processed capture clears `capture_failed`."""
+    from test_anki_sync import ready
+
+    from wortling import scheduler
+
+    def quiet(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(scheduler, "backup_all", quiet)
+    monkeypatch.setattr(scheduler, "write_report", quiet)
+    monkeypatch.setattr(scheduler, "login", lambda collection, user, endpoint: object())
+    db, user = ready(settings, monkeypatch, sync_endpoint)
+    user.writes_enabled = False
+
+    def refused(collection, auth):
+        raise ConnectionResetError(104, "Connection reset by peer")
+
+    monkeypatch.setattr(scheduler, "incremental_sync", refused)
+    scheduler.tick(settings, db)
+    with db.connect() as conn:
+        open_alerts = conn.execute(
+            "SELECT message FROM alerts WHERE kind='sync_failed' AND acknowledged_at IS NULL"
+        ).fetchall()
+    assert len(open_alerts) == 1
+    # Which failure this was, in the alert a person reads: not AnkiWeb's words
+    # about a clock, but the network underneath them going away.
+    assert open_alerts[0]["message"].startswith("could not reach AnkiWeb")
+
+    # The retry the schedule put fifteen minutes out, brought forward.
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE scheduler_state SET next_sync_at=? WHERE user_id=?",
+            ((datetime.now(UTC) - timedelta(minutes=1)).isoformat(), user.id),
+        )
+    monkeypatch.setattr(scheduler, "incremental_sync", lambda collection, auth: None)
+    monkeypatch.setattr(scheduler, "rebuild_index", lambda *args: None)
+    scheduler.tick(settings, db)
+
+    with db.connect() as conn:
+        assert conn.execute(
+            "SELECT acknowledged_at FROM alerts WHERE kind='sync_failed'"
+        ).fetchone()[0], "a working sync clears the alert of its own kind"
+        assert conn.execute("SELECT last_sync_at FROM scheduler_state").fetchone()[0]
+
+
+def test_a_completed_write_clears_the_write_alert(settings, monkeypatch, sync_endpoint):
+    from test_anki_sync import pending, ready
+
+    from wortling.anki.writer import write_session
+
+    db, user = ready(settings, monkeypatch, sync_endpoint)
+    pending(db, user)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) VALUES (?,?,?,?)",
+            (user.id, "write_failed", "could not reach AnkiWeb: reset by peer", now()),
+        )
+    assert write_session(settings, db, user)["status"] == "complete"
+    with db.connect() as conn:
+        assert conn.execute(
+            "SELECT acknowledged_at FROM alerts WHERE kind='write_failed'"
+        ).fetchone()[0]
+
+
+def test_a_forced_write_clears_the_circuit_breaker(settings, monkeypatch, sync_endpoint):
+    """The breaker was the last kind with no way out. It blocks a capture over
+    max_adds_per_run and tells the reader to review before `--force`, so a
+    forced session that finishes is that review having been made and the blocked
+    cards having gone in. Left standing, one big capture made the operational
+    check unhealthy for the life of the installation, and the watchdog filed a
+    fresh crew todo for it every day."""
+    from test_anki_sync import pending, ready
+
+    from wortling.anki.writer import write_session
+
+    db, user = ready(settings, monkeypatch, sync_endpoint)
+    pending(db, user)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) VALUES (?,?,?,?)",
+            (
+                user.id,
+                "circuit_breaker",
+                "Blocked 41 additions; review before write --force",
+                now(),
+            ),
+        )
+    assert write_session(settings, db, user, force=True)["status"] == "complete"
+    with db.connect() as conn:
+        assert conn.execute(
+            "SELECT acknowledged_at FROM alerts WHERE kind='circuit_breaker'"
+        ).fetchone()[0], "the forced session is the review the breaker asked for"
+
+
+def test_an_unforced_write_leaves_the_circuit_breaker_standing(
+    settings, monkeypatch, sync_endpoint
+):
+    """A session that never needed forcing knows nothing about the capture that
+    tripped the breaker, so it is not evidence that anyone reviewed it."""
+    from test_anki_sync import pending, ready
+
+    from wortling.anki.writer import write_session
+
+    db, user = ready(settings, monkeypatch, sync_endpoint)
+    pending(db, user)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) VALUES (?,?,?,?)",
+            (
+                user.id,
+                "circuit_breaker",
+                "Blocked 41 additions; review before write --force",
+                now(),
+            ),
+        )
+    assert write_session(settings, db, user)["status"] == "complete"
+    with db.connect() as conn:
+        assert (
+            conn.execute(
+                "SELECT acknowledged_at FROM alerts WHERE kind='circuit_breaker'"
+            ).fetchone()[0]
+            is None
+        )
+
+
+def test_a_completed_backup_clears_the_backup_alert(settings):
+    """`backup_failed` is the third kind with no way out: nothing acknowledged
+    it and it had no horizon, so an hour of disk pressure left a standing issue,
+    and the watchdog then filed a crew todo for it every day after."""
+    from wortling.backup import backup_all
+    from wortling.ops import operational_status
+
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    stale = (datetime.now(UTC) - timedelta(hours=72)).isoformat()
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) "
+            "VALUES (NULL,'backup_failed','disk',?)",
+            (stale,),
+        )
+    assert "application_alerts_unacknowledged" in operational_status(settings)["issues"]
+    backup_all(settings, db)
+    report = operational_status(settings)
+    assert "application_alerts_unacknowledged" not in report["issues"]
+    assert report["metrics"]["unacknowledged_alerts"] == {}
+    with db.connect() as conn:
+        assert conn.execute(
+            "SELECT acknowledged_at FROM alerts WHERE kind='backup_failed'"
+        ).fetchone()[0], "a finished backup clears the alert of its own kind"
+
+
+def test_the_budget_alert_stops_counting_when_its_month_is_over(settings):
+    """The budget alert is recorded against the learner whose spend tripped it,
+    and no success can prove that spend reset, so nothing clears it. What ends
+    the condition is the month it was recorded in: the budget resets there
+    whether or not anyone read the alert."""
+    from wortling.ops import operational_status
+
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    user_id = settings.users[0].id
+    last_month = datetime.now(UTC).replace(day=1, hour=12, minute=0) - timedelta(days=1)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) "
+            "VALUES (?,'monthly_budget','spend reached',?)",
+            (user_id, last_month.isoformat()),
+        )
+    report = operational_status(settings)
+    assert "application_alerts_unacknowledged" not in report["issues"]
+    assert report["metrics"]["expired_alerts"] == {"monthly_budget": 1}
+
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(user_id,kind,message,created_at) "
+            "VALUES (?,'monthly_budget','spend reached',?)",
+            (user_id, now()),
+        )
+    report = operational_status(settings)
+    assert report["metrics"]["unacknowledged_alerts"] == {"monthly_budget": 1}
+
+
+def test_an_undateable_alert_is_not_a_database_failure(settings):
+    """`expired` parsed the timestamp inside its `try` and subtracted outside
+    it, so one naive `created_at` raised TypeError out of `standing`, and the
+    broad handler in the operational check called the database broken instead of
+    reporting the alert."""
+    from wortling.ops import operational_status
+
+    db = Database(settings.data_dir)
+    db.initialize(settings)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO alerts(kind,message,created_at) "
+            "VALUES ('sync_failed','refused','2026-11-01T00:00:00')"
+        )
+    report = operational_status(settings)
+    assert "database_probe_failed" not in report["issues"]
+    # An alert nobody can date is not evidence that its condition went away.
+    assert report["metrics"]["unacknowledged_alerts"] == {"sync_failed": 1}
+
+
+def test_the_alert_says_whether_ankiweb_refused_or_was_unreachable():
+    """AnkiWeb's own sentence about a clock reached the operator as the whole
+    story, so a server that had answered read exactly like a host that could not
+    reach it. A refusal and an unreachable server are different repairs."""
+    from anki.errors import NetworkError, SyncError, SyncErrorKind
+
+    from wortling.anki.sync import FullSyncRequired, describe_failure
+
+    refused = SyncError(
+        "Unable to sync - your clock is not set to the correct time.",
+        "",
+        "",
+        "",
+        SyncErrorKind.OTHER,
+    )
+    assert describe_failure(refused) == (
+        "AnkiWeb refused this request: Unable to sync - your clock is not set to the correct time."
+    )
+    assert describe_failure(NetworkError("dns failure", "", "", "")).startswith(
+        "could not reach AnkiWeb: dns failure"
+    )
+    assert describe_failure(ConnectionResetError("reset by peer")).startswith(
+        "could not reach AnkiWeb:"
+    )
+    assert describe_failure(TimeoutError("handshake timed out")).startswith(
+        "could not reach AnkiWeb:"
+    )
+    assert describe_failure(FullSyncRequired("Full sync required")).startswith(
+        "AnkiWeb asked for a full sync"
+    )
+    # A local failure is not blamed on the network it never touched.
+    assert describe_failure(RuntimeError("Missing Anki credentials for justin")) == (
+        "the Anki session failed: Missing Anki credentials for justin"
+    )

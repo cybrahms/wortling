@@ -6,8 +6,9 @@ from zoneinfo import ZoneInfo
 
 from filelock import FileLock, Timeout
 
+from wortling.alerts import acknowledge
 from wortling.anki.reader import open_collection, rebuild_index
-from wortling.anki.sync import incremental_sync, login
+from wortling.anki.sync import describe_failure, incremental_sync, login
 from wortling.anki.writer import write_session
 from wortling.backup import backup_all
 from wortling.config import Settings
@@ -64,7 +65,7 @@ def tick(settings: Settings, db: Database) -> None:
             with db.connect() as conn:
                 conn.execute(
                     "INSERT INTO alerts(user_id,kind,message,created_at) VALUES (?,?,?,?)",
-                    (user.id, "sync_failed", str(exc)[:1000], now()),
+                    (user.id, "sync_failed", describe_failure(exc)[:1000], now()),
                 )
                 next_attempt = (datetime.now(UTC) + timedelta(minutes=15)).isoformat()
                 conn.execute(
@@ -80,3 +81,9 @@ def tick(settings: Settings, db: Database) -> None:
                     "UPDATE scheduler_state SET next_sync_at=?,last_sync_at=? WHERE user_id=?",
                     (next_attempt, now(), user.id),
                 )
+                # The schedule failed and now it works, so the alert of that kind
+                # is no longer an issue. `capture_failed` has always cleared this
+                # way when the capture it named finally processed; a transient
+                # sync failure that clears itself should behave the same, rather
+                # than counting as a standing issue until a person acknowledges it.
+                acknowledge(conn, user.id, "sync_failed")

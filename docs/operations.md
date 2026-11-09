@@ -69,14 +69,23 @@ without source text, credentials, or provider response bodies.
 
 The worker updates a heartbeat before and after each loop. The operational check
 flags a missing heartbeat or one older than 15 minutes, pending work more than
-15 minutes past its next attempt, failed jobs, expired running leases, all
-unacknowledged application alerts, missing/successful backups older than 30 hours,
-and collection syncs more than 30 minutes past their scheduled time. Pending work
+15 minutes past its next attempt, failed jobs, expired running leases, standing
+application alerts, missing/successful backups older than 30 hours, and
+collection syncs more than 30 minutes past their scheduled time. Pending work
 for a disabled learner is still reported: accepting captures without processing
 them must be visible. Provider probing authenticates `/models` and checks that
 all configured models exist. It does not spend inference tokens or prove that
 inference quotas and structured generation work; actual failures become queue
 and application-alert signals.
+
+An application alert is a standing issue only while it still says something
+about now, which is two rules in `src/wortling/alerts.py`. A success clears the
+kind it belongs to: a processed capture clears `capture_failed`, a sync that
+works clears `sync_failed`, a completed write session clears `write_failed`. A
+transient kind that was never cleared expires after six hours and stops
+counting, while the row stays as history; `metrics.expired_alerts` shows what
+expired. A kind with no horizon never expires, because a failure nobody has
+reasoned about should not quietly disappear.
 
 On this macOS station, run `python3 deploy/install-monitor.py` to install an
 independent launchd check every five minutes. `scripts/monitor.py` checks API
@@ -85,13 +94,20 @@ A stopped container, unavailable Docker, or timed-out probe therefore alerts
 even when the application cannot report its own health. The host and its logged-in
 launchd session must be running for this check to run.
 
-The watchdog uses the station's existing `~/.config/iris-telegram/{token,chat_id}`
-files, pages on new issues, repeats after an hour, and sends a recovery message.
-Failed delivery does not advance the notification state. Inspect
-`~/Library/Logs/wortling/monitor.log` for every snapshot and
-`~/.local/state/wortling-monitor/state.json` for the last delivery state.
-`python3 scripts/monitor.py --dry-run` checks without sending or changing state.
-Do not acknowledge application alerts until their underlying condition is resolved.
+The watchdog files what it finds as a Switchboard todo for the crew, and rings
+nobody: `sbpush` (on the installed job's PATH) posts it to the inbox the agents
+drain, one item per incident per day, with the issue list, the metrics and where to
+look. The page survives only as the fallback for a queue that cannot be written,
+which is the arrangement the harness made for its own notify hook on
+2026-10-21. It also measures this host's clock against a remote authority each
+run, reports `clock_skew_seconds`, and names `host_clock_skew` past 30 seconds,
+because AnkiWeb's refusal says "your clock is not set to the correct time"
+whether or not a clock is the problem. Inspect `~/Library/Logs/wortling/monitor.log`
+for every snapshot and `~/.local/state/wortling-monitor/state.json` for the last
+filed state. `python3 scripts/monitor.py --dry-run` checks without filing or
+changing state. Do not acknowledge application alerts until their underlying
+condition is resolved; an acknowledgement says a person has dealt with it, not
+that the page was inconvenient.
 
 ## Collections and writes
 
