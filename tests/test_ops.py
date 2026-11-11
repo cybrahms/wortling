@@ -146,6 +146,28 @@ def test_provider_failures_are_visible_and_redacted(healthy, monkeypatch, status
     assert "private" not in str(report)
 
 
+def test_a_transport_failure_says_what_kind_it_was(healthy, monkeypatch):
+    """2026-11-11: the watchdog filed `provider_probe_failed` to the crew with no
+    reason in it, and a crew member had to exec into the worker to discover the
+    probe had failed once, transiently, while every run either side returned
+    200. The exception was caught and thrown away. The class name is what tells
+    a timeout from a refused connection, and unlike the message it cannot carry
+    a response body or a token into a report read on a phone."""
+    settings, _ = healthy
+    settings.llm.api_key_env = "SYNTHETIC_API_KEY"
+    monkeypatch.setenv("SYNTHETIC_API_KEY", "private-key")
+
+    def refuse(request):
+        raise httpx.ConnectError("failed to reach sk-live-private-token")
+
+    report = operational_status(
+        settings, probe_provider=True, transport=httpx.MockTransport(refuse)
+    )
+    assert "provider_probe_failed" in report["issues"]
+    assert report["metrics"]["provider_probe_error"] == "ConnectError"
+    assert "private" not in str(report), "the reason must be a class, not a message"
+
+
 def monitor_module():
     path = Path(__file__).resolve().parents[1] / "scripts/monitor.py"
     spec = importlib.util.spec_from_file_location("wortling_monitor", path)
