@@ -112,7 +112,14 @@ def operational_status(settings: Settings, *, probe_provider=False, transport=No
                 available = {model["id"] for model in response.json()["data"]}
                 if set(settings.llm.models.values()) - available:
                     issues.append("configured_models_unavailable")
-        except Exception:
+        except Exception as exc:
+            # The kind of failure, and only the kind: a crew member woken by
+            # "provider_probe_failed" had to exec into the container to learn
+            # whether it was a timeout, a DNS answer or a refused connection,
+            # because this handler threw the reason away. The class name is
+            # enough to tell those apart and cannot carry a response body or a
+            # token, which the message can.
+            metrics["provider_probe_error"] = type(exc).__name__
             issues.append("provider_probe_failed")
     return {
         "status": "degraded" if issues else "ok",
