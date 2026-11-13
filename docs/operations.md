@@ -96,8 +96,16 @@ launchd session must be running for this check to run.
 
 The watchdog files what it finds as a Switchboard todo for the crew, and rings
 nobody: `sbpush` (on the installed job's PATH) posts it to the inbox the agents
-drain, one item per incident per day, with the issue list, the metrics and where to
-look. The page survives only as the fallback for a queue that cannot be written,
+drain, one item per incident per day, with the issue list, the metrics, the
+component each issue name speaks about and where to look. That component comes
+from `config/watchdog-issues.json`, the closed set of names the watchdog may
+raise: a name is a claim about exactly one component, and a name the registry
+does not hold is reported as `undeclared_issues` rather than described wrongly.
+The set is closed because for fourteen hours on 2026-11-01 a probe reported its
+own failure under the worker's name across 173 records, and nothing noticed.
+Adding a name means saying which component it is about and what it means;
+`tests/test_watchdog_issues.py` fails otherwise, and also fails on a declared
+name that nothing can raise any more. The page survives only as the fallback for a queue that cannot be written,
 which is the arrangement the harness made for its own notify hook on
 2026-10-21. It also measures this host's clock against a remote authority each
 run, reports `clock_skew_seconds`, and names `host_clock_skew` past 30 seconds,

@@ -1,0 +1,73 @@
+{
+  "about": "The closed set of names the watchdog may raise, and the component each one speaks about. Read by scripts/monitor.py (it puts the component beside every name it files, so a reader can tell a probe failure from a worker failure) and by tests/test_watchdog_issues.py (which fails when either emitter produces a name this file does not hold). A name is a claim about ONE component: on 2026-11-01 a probe reported its own failure under the worker's name across 173 records and paged for fourteen hours, which is the failure this registry exists to prevent.",
+  "issues": {
+    "host_clock_skew": {
+      "component": "host",
+      "meaning": "this box's clock is further from a time authority than 30s. AnkiWeb refuses the sync and says 'your clock is not set to the correct time', which is the vendor's sentence and not the diagnosis."
+    },
+    "api_unreachable": {
+      "component": "wortling-api",
+      "meaning": "nothing answered on 127.0.0.1:8787/v1/health. The service is down or not listening, which is a fact about the API and not about the worker."
+    },
+    "api_unhealthy": {
+      "component": "wortling-api",
+      "meaning": "the API answered and said its status is not 'ok'. It is up and reporting itself unwell, which is a different repair from an API that is not there."
+    },
+    "probe_cannot_run": {
+      "component": "watchdog",
+      "meaning": "the watchdog could not ask the worker anything at all: docker exec failed, or ops-check produced no parsable report. This is NEVER a statement about the worker - reporting it as one paged the operator for fourteen hours on 2026-11-01 while the worker was fine."
+    },
+    "worker_probe_failed": {
+      "component": "worker-probe",
+      "meaning": "the probe ran, exited non-zero, and named no issue of its own. The failure is the probe's own, which is why it is not spelled worker_probe_unavailable."
+    },
+    "worker_heartbeat_missing": {
+      "component": "worker",
+      "meaning": "the worker has never written its heartbeat file. It is not running, or it has never started."
+    },
+    "worker_heartbeat_stale": {
+      "component": "worker",
+      "meaning": "the heartbeat file exists and has not been touched for over fifteen minutes. The process is there or was, and has stopped working."
+    },
+    "pending_jobs_overdue": {
+      "component": "queue",
+      "meaning": "at least one job has been pending past its next_attempt_at by more than fifteen minutes. Work is waiting and nothing is picking it up."
+    },
+    "failed_jobs": {
+      "component": "queue",
+      "meaning": "at least one job is in the failed state. A capture did not get processed and somebody has to decide whether to retry it."
+    },
+    "running_job_lease_expired": {
+      "component": "queue",
+      "meaning": "a job is marked running and its lease has expired or was never set. The worker that took it is gone, so the job is stuck rather than in progress."
+    },
+    "application_alerts_unacknowledged": {
+      "component": "wortling-api",
+      "meaning": "an open alert is still standing within its horizon. Past its horizon it expires on its own and is history, which is why this counts standing() and not every open row."
+    },
+    "backup_missing_or_stale": {
+      "component": "backup",
+      "meaning": "there is no completed backup run, or the newest one is more than thirty hours old. Nothing is protecting the data."
+    },
+    "scheduled_sync_overdue": {
+      "component": "scheduler",
+      "meaning": "a user with a local collection has no scheduler state, or its next sync is more than half an hour past. The Anki collection is drifting from what the learner expects."
+    },
+    "database_probe_failed": {
+      "component": "database",
+      "meaning": "the read-only queries against wortling.sqlite3 raised. The service's own store could not be read, so none of the queue, alert, backup or scheduler signals in this run mean anything."
+    },
+    "provider_auth_or_availability_failed": {
+      "component": "llm-provider",
+      "meaning": "the configured provider answered the /models probe with a non-2xx status. The token or the endpoint is wrong or the provider is down."
+    },
+    "configured_models_unavailable": {
+      "component": "llm-provider",
+      "meaning": "the provider answered and does not offer every model this deployment is configured to use. Calls will fail for the ones that are missing."
+    },
+    "provider_probe_failed": {
+      "component": "llm-provider",
+      "meaning": "the /models probe raised before it got a status. The exception class rides in metrics.provider_probe_error, because 'provider_probe_failed' alone sent a crew member into the container to find out what it was."
+    }
+  }
+}
