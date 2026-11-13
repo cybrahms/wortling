@@ -25,6 +25,21 @@ from pathlib import Path
 # reads "0.2s" and knows the vendor's sentence was not the diagnosis.
 CLOCK_SKEW_LIMIT = 30
 
+# The closed set of issue names this watchdog may raise and the component each
+# one speaks about. It is data in the repo rather than a constant here, because
+# the names come from two places - this script and the worker's own ops-check -
+# and the whole point is that a reader can tell which component a name is about.
+# On 2026-11-01 a probe reported its own failure under the worker's name across
+# 173 records and paged for fourteen hours; a name that does not say which thing
+# is broken is the defect, not the wording of the alert.
+ISSUE_REGISTRY = Path(__file__).resolve().parents[1] / "config" / "watchdog-issues.json"
+
+
+def declared_issues(path=ISSUE_REGISTRY):
+    """name -> {component, meaning}, read from the registry beside the monitor."""
+    with open(path) as handle:
+        return json.load(handle)["issues"]
+
 
 class ProbeCannotRun(RuntimeError):
     """The probe never got as far as asking the worker anything.
@@ -195,6 +210,22 @@ def file_todo(title, payload, key, *, runner=subprocess.run):
     return result.stdout
 
 
+def describe(issues, path=ISSUE_REGISTRY):
+    """(components, undeclared) for a set of issue names, never raising.
+
+    A watchdog that cannot read its own registry still has to file the fault it
+    found: losing a real signal because the label lookup failed would be worse
+    than the missing label. So an unreadable registry yields an empty map and
+    every name counts as undeclared, which is exactly what is true.
+    """
+    try:
+        known = declared_issues(path)
+    except (OSError, ValueError, KeyError):
+        return {}, sorted(set(issues))
+    components = {name: known[name]["component"] for name in issues if name in known}
+    return components, sorted(name for name in set(issues) if name not in known)
+
+
 def incident_key(issues, moment):
     """One key per incident per day, so the queue hears about it once a day."""
     day = time.strftime("%Y%m%d", time.gmtime(moment))
@@ -202,12 +233,20 @@ def incident_key(issues, moment):
     return f"wortling-monitor-{day}-{digest}"
 
 
-def incident_payload(issues, metrics):
-    """What a crew member needs to start, as a work order rather than an alert."""
+def incident_payload(issues, metrics, components=None, undeclared=None):
+    """What a crew member needs to start, as a work order rather than an alert.
+
+    `components` is the registry's answer to "which thing is this about", so a
+    reader is not left to infer it from the name. `undeclared` names any issue
+    the registry does not hold: that is a defect in the emitter rather than in
+    the service, and the todo says so instead of the reader guessing.
+    """
     return {
         "name": "wortling-monitor",
         "scheduled": True,
         "issues": issues,
+        "components": components or {},
+        "undeclared_issues": undeclared or [],
         "metrics": metrics,
         "instructions": (
             "The wortling watchdog reported this. Read "
@@ -272,7 +311,15 @@ def notify(report, state_path, *, filer=None, sender=send_alert, clock=time.time
             pass
         else:
             try:
-                filer(title, incident_payload(issues, report.get("metrics", {})), key)
+                filer(
+                    title,
+                    incident_payload(
+                        issues,
+                        report.get("metrics", {}),
+                        *describe(issues),
+                    ),
+                    key,
+                )
             except Exception:
                 # The queue is the crew's path to this. When it cannot be
                 # written the operator is the only reader left, so the page
